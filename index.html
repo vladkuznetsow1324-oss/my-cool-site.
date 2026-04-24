@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Among Us: Modular Edition</title>
+    <title>Among Us: Modular Survivor</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; background: linear-gradient(#0f0c29, #16213e); }
@@ -21,23 +21,18 @@
     <canvas id="gameCanvas"></canvas>
 
 <script>
-// ==========================================
-// 1. НАСТРОЙКИ (CONFIG) - Меняй тут!
-// ==========================================
+// --- [1. НАСТРОЙКИ / CONFIG] ---
 const CONFIG = {
     playerSpeed: 7,
     jumpPower: -16,
     gravity: 0.8,
     hpMax: 3,
-    coinValue: 1,
     shopPrice: 10,
     meteorColor: '#A0522D',
-    platformColor: '#444'
+    coinColor: '#ffff00'
 };
 
-// ==========================================
-// 2. СОСТОЯНИЕ ИГРЫ (STATE)
-// ==========================================
+// --- [2. СОСТОЯНИЕ / STATE] ---
 let state = {
     distance: 0,
     coins: 0,
@@ -47,52 +42,145 @@ let state = {
     cameraX: 0
 };
 
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const playerImg = new Image();
+playerImg.src = 'photo1.jpg'; 
+
 const player = { x: 50, y: 100, width: 50, height: 50, dx: 0, dy: 0, grounded: false };
 let platforms = [{x: 0, y: 500, w: 400, h: 40}];
 let coins = [];
 let meteors = [];
+const keys = {};
 
-// ==========================================
-// 3. МАГАЗИН (SHOP)
-// ==========================================
+// --- [3. МАГАЗИН И УПРАВЛЕНИЕ] ---
 window.addEventListener('keydown', e => {
-    if (e.code === 'KeyB') { // Покупка на 'B'
-        if (state.coins >= CONFIG.shopPrice) {
-            state.coins -= CONFIG.shopPrice;
-            state.hp++;
-            updateUI();
-        }
+    keys[e.code] = true;
+    if (e.code === 'KeyB' && state.coins >= CONFIG.shopPrice) {
+        state.coins -= CONFIG.shopPrice;
+        state.hp++;
     }
 });
+window.addEventListener('keyup', e => keys[e.code] = false);
 
-// ==========================================
-// 4. ЛОГИКА (LOGIC)
-// ==========================================
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- [4. ЛОГИКА / LOGIC] ---
+function generateWorld() {
+    const lastP = platforms[platforms.length - 1];
+    if (player.x > lastP.x - 1000) {
+        const newX = lastP.x + lastP.w + Math.random() * 150 + 70;
+        const newY = Math.max(250, Math.min(canvas.height - 100, lastP.y + (Math.random() * 240 - 120)));
+        const newW = Math.random() * 150 + 100;
+        platforms.push({x: newX, y: newY, w: newW, h: 30});
+        if (Math.random() > 0.4) coins.push({x: newX + newW/2, y: newY - 40, collected: false});
+        if (Math.random() > 0.6) meteors.push({
+            x: player.x + canvas.width + 200, y: Math.random() * canvas.height,
+            size: 20 + Math.random() * 15, speed: 4 + Math.random() * 4
+        });
+    }
+    if (platforms.length > 20) platforms.shift();
+}
+
 function update() {
-    handleInput();
-    applyPhysics();
-    checkCollisions();
-    generateWorld();
-    
+    // Движение
+    if (keys['ArrowLeft']) player.dx = -CONFIG.playerSpeed;
+    else if (keys['ArrowRight']) player.dx = CONFIG.playerSpeed;
+    else player.dx *= 0.8;
+
+    if (keys['ArrowUp'] && player.grounded) {
+        player.dy = CONFIG.jumpPower;
+        player.grounded = false;
+    }
+
+    player.dy += CONFIG.gravity;
+    player.x += player.dx;
+    player.y += player.dy;
+    player.grounded = false;
+
+    // Столкновения
+    platforms.forEach(p => {
+        if (player.x < p.x + p.w && player.x + player.width > p.x &&
+            player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
+            player.y = p.y - player.height;
+            player.dy = 0;
+            player.grounded = true;
+        }
+    });
+
+    coins.forEach(c => {
+        if (!c.collected && player.x < c.x + 20 && player.x + player.width > c.x &&
+            player.y < c.y + 20 && player.y + player.height > c.y) {
+            c.collected = true;
+            state.coins++;
+        }
+    });
+
     if (state.invulnerable > 0) state.invulnerable--;
+    meteors.forEach((m, i) => {
+        m.x -= m.speed;
+        let dist = Math.sqrt(Math.pow((player.x + 25) - m.x, 2) + Math.pow((player.y + 25) - m.y, 2));
+        if (dist < m.size + 15 && state.invulnerable <= 0) {
+            state.hp--;
+            state.invulnerable = 60;
+            meteors.splice(i, 1);
+            if (state.hp <= 0) resetGame();
+        }
+    });
+
+    if (player.y > canvas.height + 300) resetGame();
     
+    state.distance = Math.max(state.distance, Math.floor(player.x));
+    if (state.distance > state.highScore) {
+        state.highScore = state.distance;
+        localStorage.setItem('highScore', state.highScore);
+    }
+    
+    state.cameraX = player.x - canvas.width / 4;
+    
+    document.getElementById('scoreBoard').innerHTML = 
+        `HP: ${state.hp} | Монеты: ${state.coins} | Рекорд: ${state.highScore}<br>` +
+        `Дистанция: ${state.distance}<br>` +
+        `<span style="color: #ffff00">Нажми 'B', чтобы купить HP (10 монет)</span>`;
+
+    generateWorld();
     draw();
     requestAnimationFrame(update);
 }
 
-// ... остальной технический код отрисовки и физики ...
-// (Чтобы не писать еще 100 строк, я сократил их для примера, 
-// но в твоем файле они будут работать так же)
+// --- [5. ОТРИСОВКА / DRAW] ---
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(-state.cameraX, 0);
 
-function resetGame() {
-    state.hp = CONFIG.hpMax;
-    state.distance = 0;
-    state.coins = 0;
-    // ... очистка массивов ...
+    ctx.fillStyle = CONFIG.meteorColor;
+    meteors.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); });
+
+    ctx.fillStyle = '#444';
+    ctx.strokeStyle = '#0ff';
+    platforms.forEach(p => { ctx.fillRect(p.x, p.y, p.w, p.h); ctx.strokeRect(p.x, p.y, p.w, p.h); });
+
+    ctx.fillStyle = CONFIG.coinColor;
+    coins.forEach(c => { if(!c.collected) { ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, Math.PI*2); ctx.fill(); } });
+
+    if (state.invulnerable % 10 < 5) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+
+    ctx.restore();
 }
 
-// Дальше идут функции отрисовки (draw), которые теперь 
-// просто берут цвета из CONFIG.
+function resetGame() {
+    state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
+    player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
+    platforms = [{x: 0, y: 500, w: 400, h: 40}]; coins = []; meteors = [];
+}
+
+playerImg.onload = update;
 </script>
 </body>
 </html>
