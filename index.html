@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Among Us: Space Odyssey</title>
+    <title>Among Us: Music & Gold</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; background: #050510; }
@@ -16,17 +16,22 @@
     <div class="ui" id="scoreBoard">HP: 3 | Монеты: 0 | Рекорд: 0<br>Дистанция: 0</div>
     <canvas id="gameCanvas"></canvas>
 
+    <!-- Аудио-плеер для фоновой музыки -->
+    <audio id="bgMusic" loop>
+        <source src="music.mp3" type="audio/mpeg">
+    </audio>
+
 <script>
-// --- [1. CONFIG] ---
+// Настройки
 const CONFIG = {
     playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10
 };
 
-// --- [2. STATE] ---
+// Состояние
 let state = {
     distance: 0, coins: 0, hp: CONFIG.hpMax,
     highScore: localStorage.getItem('highScore') || 0,
-    invulnerable: 0, cameraX: 0
+    invulnerable: 0, cameraX: 0, musicStarted: false
 };
 
 const canvas = document.getElementById('gameCanvas');
@@ -38,15 +43,18 @@ const player = { x: 50, y: 100, width: 50, height: 50, dx: 0, dy: 0, grounded: f
 let platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60}];
 let coins = [];
 let meteors = [];
-let stars = []; // Для фона
-const keys = {};
+let stars = [];
 
-// Генерируем звёзды один раз
 for(let i=0; i<100; i++) {
     stars.push({x: Math.random()*2000, y: Math.random()*1000, s: Math.random()*2});
 }
 
+// Запуск музыки при первом клике/нажатии
 window.addEventListener('keydown', e => {
+    if (!state.musicStarted) {
+        document.getElementById('bgMusic').play();
+        state.musicStarted = true;
+    }
     keys[e.code] = true;
     if (e.code === 'KeyB' && state.coins >= CONFIG.shopPrice) {
         state.coins -= CONFIG.shopPrice; state.hp++;
@@ -76,10 +84,10 @@ function generateWorld() {
         platforms.push({x: newX, y: newY, w: width, h: 25, type: type, timer: 60, isTouched: false});
         
         if (Math.random() > 0.4 && type === 'normal') {
-            coins.push({x: newX + width/2, y: newY - 40, collected: false});
+            // Монетки стали чуть выше и координаты точнее
+            coins.push({x: newX + width/2, y: newY - 45, collected: false});
         }
         
-        // Сложность: метеориты чаще и быстрее со временем
         if (Math.random() > 0.6) {
             meteors.push({
                 x: player.x + canvas.width + 400, y: Math.random() * canvas.height,
@@ -121,9 +129,10 @@ function update() {
         }
     });
 
+    // Сбор монет (зона сбора чуть больше для удобства)
     coins.forEach(c => {
-        if (!c.collected && player.x < c.x + 20 && player.x + player.width > c.x &&
-            player.y < c.y + 20 && player.y + player.height > c.y) {
+        if (!c.collected && player.x < c.x + 25 && player.x + player.width > c.x - 25 &&
+            player.y < c.y + 25 && player.y + player.height > c.y - 25) {
             c.collected = true; state.coins++;
         }
     });
@@ -157,7 +166,6 @@ function update() {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Рисуем звёзды (двигаются медленнее камеры для эффекта глубины)
     ctx.fillStyle = "#fff";
     stars.forEach(s => {
         let sx = (s.x - state.cameraX * 0.2) % canvas.width;
@@ -182,8 +190,16 @@ function draw() {
         ctx.strokeStyle = "#5D2E17"; ctx.stroke();
     });
 
-    ctx.fillStyle = '#ff0';
-    coins.forEach(c => { if(!c.collected) { ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI*2); ctx.fill(); } });
+    // КРАСИВАЯ МОНЕТКА
+    coins.forEach(c => { 
+        if(!c.collected) { 
+            ctx.fillStyle = '#FFD700'; // Золотой
+            ctx.beginPath(); ctx.arc(c.x, c.y, 14, 0, Math.PI*2); ctx.fill(); 
+            ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 3; ctx.stroke(); // Темный контур
+            ctx.fillStyle = '#FFF'; ctx.font = "bold 12px Arial";
+            ctx.fillText("$", c.x - 4, c.y + 4); // Символ на монетке
+        } 
+    });
 
     if (state.invulnerable % 10 < 5) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
     ctx.restore();
@@ -196,6 +212,7 @@ function resetGame() {
     coins = []; meteors = [];
 }
 
+const keys = {};
 playerImg.onload = update;
 </script>
 </body>
