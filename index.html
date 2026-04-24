@@ -1,84 +1,55 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Among Us: Fixed & Golden V3</title>
+    <title>Among Us: Leaderboard Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; background: #050510; }
         .ui { 
             position: absolute; top: 15px; left: 15px; 
-            color: #00ff00; font-family: 'Courier New', monospace; font-size: 20px;
+            color: #00ff00; font-family: 'Courier New', monospace; font-size: 18px;
             text-shadow: 2px 2px 4px #000; pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <div class="ui" id="scoreBoard">HP: 3 | Монеты: 0 | Рекорд: 0<br>Дистанция: 0</div>
+    <div class="ui" id="scoreBoard">Нажми любую клавишу!</div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
-// --- [1. CONFIG + LEADERBOARD] ---
+// --- [1. CONFIG] ---
 const CONFIG = {
     playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10
 };
 
-// Загружаем таблицу из памяти или создаем пустую
-let leaderboard = JSON.parse(localStorage.getItem('localLeaderboard')) || [];
-
-function saveHighScore(name, score) {
-    leaderboard.push({name, score});
-    leaderboard.sort((a, b) => b.score - a.score); // Сортируем: лучшие сверху
-    leaderboard = leaderboard.slice(0, 5); // Оставляем только ТОП-5
-    localStorage.setItem('localLeaderboard', JSON.stringify(leaderboard));
-}
-
-// --- [ОБНОВЛЕННЫЙ ИНТЕРФЕЙС] ---
-function drawUI() {
-    let leaderText = leaderboard.map((res, i) => `${i+1}. ${res.name}: ${res.score}`).join('<br>');
-    
-    document.getElementById('scoreBoard').innerHTML = 
-        `HP: ${state.hp} | Монеты: ${state.coins}<br>` +
-        `Дистанция: ${state.distance} | Рекорд: ${state.highScore}<br>` +
-        `<div style="color:#aaa; font-size:14px; margin-top:10px;">ТОП-5 ЛОКАЛЬНО:<br>${leaderText}</div>` +
-        `<br><span style="color:#ff0">Жми 'B' - купить HP (10 монет)</span>`;
-}
-//-------------------------------------------------------------------------------------------------------------------
-
-// --- [2. СОСТОЯНИЕ] ---
+// --- [2. STATE & LEADERBOARD] ---
 let state = {
     distance: 0, coins: 0, hp: CONFIG.hpMax,
     highScore: localStorage.getItem('highScore') || 0,
-    invulnerable: 0, cameraX: 0, musicStarted: false
+    invulnerable: 0, cameraX: 0, gameStarted: false
 };
+
+// Загружаем ТОП-5 из памяти
+let leaderboard = JSON.parse(localStorage.getItem('localLeaderboard')) || [];
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const playerImg = new Image();
-playerImg.src = 'photo1.jpg'; 
+playerImg.src = 'photo1'; // Твой файл без расширения
 
 const player = { x: 50, y: 100, width: 50, height: 50, dx: 0, dy: 0, grounded: false };
-let platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60}];
+let platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal'}];
 let coins = [];
 let meteors = [];
 let stars = [];
 const keys = {};
 
-// Генерируем звезды для фона
-for(let i=0; i<100; i++) {
-    stars.push({x: Math.random()*2000, y: Math.random()*1000, s: Math.random()*2});
-}
+for(let i=0; i<100; i++) stars.push({x: Math.random()*2000, y: Math.random()*1000, s: Math.random()*2});
 
-// Создаем музыку программно, чтобы не ломать игру
-const bgMusic = new Audio('music.mp3');
-bgMusic.loop = true;
-
+// --- [3. LOGIC] ---
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
-    // Пытаемся запустить музыку только при первом нажатии
-    if (!state.musicStarted) {
-        bgMusic.play().catch(() => {}); // Если файла нет, просто игнорируем ошибку
-        state.musicStarted = true;
-    }
+    if (!state.gameStarted) state.gameStarted = true;
     if (e.code === 'KeyB' && state.coins >= CONFIG.shopPrice) {
         state.coins -= CONFIG.shopPrice; state.hp++;
     }
@@ -92,77 +63,56 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// --- [3. ЛОГИКА] ---
-function generateWorld() {
-    const lastP = platforms[platforms.length - 1];
-    if (player.x > lastP.x - 1200) {
-        const newX = lastP.x + lastP.w + Math.random() * 130 + 70;
-        const newY = Math.max(150, Math.min(canvas.height - 100, lastP.y + (Math.random() * 250 - 125)));
-        
-        let type = 'normal';
-        let rand = Math.random();
-        if (rand > 0.88) type = 'trap';    
-        else if (rand > 0.78) type = 'jump'; 
-        
-        let width = Math.random() * 150 + 80;
-        platforms.push({x: newX, y: newY, w: width, h: 25, type: type, timer: 60, isTouched: false});
-        
-        if (Math.random() > 0.4 && type === 'normal') {
-            coins.push({x: newX + width/2, y: newY - 45, collected: false});
-        }
-        
-        if (Math.random() > 0.6) {
-            meteors.push({
-                x: player.x + canvas.width + 400, y: Math.random() * canvas.height,
-                size: 15 + Math.random() * 20, 
-                speed: (4 + Math.random() * 5) + (state.distance / 50000)
-            });
+function checkLeaderboard(finalScore) {
+    // Проверяем, достоин ли результат ТОП-5
+    if (leaderboard.length < 5 || finalScore > leaderboard[leaderboard.length - 1].score) {
+        const name = prompt("НОВЫЙ РЕКОРД! Введите ваше имя для таблицы лидеров:", "Player");
+        if (name) {
+            leaderboard.push({name, score: finalScore});
+            leaderboard.sort((a, b) => b.score - a.score);
+            leaderboard = leaderboard.slice(0, 5);
+            localStorage.setItem('localLeaderboard', JSON.stringify(leaderboard));
         }
     }
-    if (platforms.length > 30) platforms.shift();
 }
 
 function update() {
+    if (!state.gameStarted) { draw(); requestAnimationFrame(update); return; }
+
+    // Физика и управление
     if (keys['ArrowLeft']) player.dx = -CONFIG.playerSpeed;
     else if (keys['ArrowRight']) player.dx = CONFIG.playerSpeed;
     else player.dx *= 0.8;
-
-    if (keys['ArrowUp'] && player.grounded) {
-        player.dy = CONFIG.jumpPower;
-        player.grounded = false;
-    }
+    if (keys['ArrowUp'] && player.grounded) { player.dy = CONFIG.jumpPower; player.grounded = false; }
 
     player.dy += CONFIG.gravity;
     player.x += player.dx;
     player.y += player.dy;
     player.grounded = false;
 
+    // Платформы
     platforms.forEach((p, i) => {
-        if (player.x < p.x + p.w && player.x + player.width > p.x &&
-            player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
+        if (player.x < p.x + p.w && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
             player.y = p.y - player.height;
-            if (p.type === 'jump') player.dy = CONFIG.jumpPower * 1.5;
-            else player.dy = 0;
+            player.dy = p.type === 'jump' ? CONFIG.jumpPower * 1.5 : 0;
             player.grounded = true;
-            if (p.type === 'trap') p.isTouched = true;
+            if (p.type === 'trap') { p.isTouched = true; p.timer = p.timer || 60; }
         }
-        if (p.isTouched) {
-            p.timer--;
-            if (p.timer <= 0) platforms.splice(i, 1);
-        }
+        if (p.isTouched) { p.timer--; if (p.timer <= 0) platforms.splice(i, 1); }
     });
 
+    // Монеты
     coins.forEach(c => {
-        if (!c.collected && player.x < c.x + 20 && player.x + player.width > c.x - 20 &&
-            player.y < c.y + 20 && player.y + player.height > c.y - 20) {
+        if (!c.collected && player.x < c.x + 25 && player.x + player.width > c.x - 25 && player.y < c.y + 25 && player.y + player.height > c.y - 25) {
             c.collected = true; state.coins++;
         }
     });
 
+    // Метеориты
     if (state.invulnerable > 0) state.invulnerable--;
     meteors.forEach((m, i) => {
         m.x -= m.speed;
-        let dist = Math.sqrt(Math.pow((player.x + 25) - m.x, 2) + Math.pow((player.y + 25) - m.y, 2));
+        let dist = Math.sqrt(Math.pow((player.x+25)-m.x, 2) + Math.pow((player.y+25)-m.y, 2));
         if (dist < m.size + 15 && state.invulnerable <= 0) {
             state.hp--; state.invulnerable = 60; meteors.splice(i, 1);
             if (state.hp <= 0) resetGame();
@@ -170,25 +120,39 @@ function update() {
     });
 
     if (player.y > canvas.height + 400) resetGame();
+    
     state.distance = Math.max(state.distance, Math.floor(player.x));
     if (state.distance > state.highScore) {
         state.highScore = state.distance;
         localStorage.setItem('highScore', state.highScore);
     }
-    
-    state.cameraX = player.x - canvas.width / 4;
-    document.getElementById('scoreBoard').innerHTML = 
-        `HP: ${state.hp} | Монеты: ${state.coins} | Рекорд: ${state.highScore}<br>Дистанция: ${state.distance}<br><span style="color:#ff0">Жми 'B' - купить HP (10 монет)</span>`;
 
-    generateWorld();
+    state.cameraX = player.x - canvas.width / 4;
+    
+    // UI
+    let leadUI = leaderboard.map((r, i) => `${i+1}. ${r.name}: ${r.score}`).join('<br>');
+    document.getElementById('scoreBoard').innerHTML = 
+        `HP: ${state.hp} | Монеты: ${state.coins}<br>Дистанция: ${state.distance}<br>` +
+        `<div style="color:#aaa; font-size:14px; margin-top:5px;">ТОП-5 ЛОКАЛЬНО:<br>${leadUI}</div>` +
+        `<br><span style="color:#ff0">Жми 'B' - купить HP (10 монет)</span>`;
+
+    if (player.x > (platforms[platforms.length-1].x - 1000)) generateWorld();
     draw();
     requestAnimationFrame(update);
 }
 
-// --- [4. ОТРИСОВКА] ---
+function generateWorld() {
+    const lastP = platforms[platforms.length - 1];
+    const newX = lastP.x + lastP.w + Math.random() * 130 + 70;
+    const newY = Math.max(150, Math.min(canvas.height - 100, lastP.y + (Math.random() * 250 - 125)));
+    let type = Math.random() > 0.85 ? 'trap' : (Math.random() > 0.8 ? 'jump' : 'normal');
+    platforms.push({x: newX, y: newY, w: Math.random()*150+80, h: 25, type, isTouched: false});
+    if (Math.random() > 0.4 && type === 'normal') coins.push({x: newX + 50, y: newY - 45, collected: false});
+    if (Math.random() > 0.6) meteors.push({x: player.x + canvas.width + 400, y: Math.random()*canvas.height, size: 20, speed: 5});
+}
+
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
     ctx.fillStyle = "#fff";
     stars.forEach(s => {
         let sx = (s.x - state.cameraX * 0.2) % canvas.width;
@@ -198,44 +162,32 @@ function draw() {
 
     ctx.save();
     ctx.translate(-state.cameraX, 0);
-
     platforms.forEach(p => {
-        if (p.type === 'trap') ctx.fillStyle = p.isTouched ? '#f33' : '#800';
-        else if (p.type === 'jump') ctx.fillStyle = '#0f0';
-        else ctx.fillStyle = '#444';
+        ctx.fillStyle = p.type === 'trap' ? (p.isTouched ? '#f33' : '#800') : (p.type === 'jump' ? '#0f0' : '#444');
         ctx.fillRect(p.x, p.y, p.w, p.h);
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(p.x, p.y, p.w, p.h);
+        ctx.strokeStyle = '#fff'; ctx.strokeRect(p.x, p.y, p.w, p.h);
     });
-
     ctx.fillStyle = '#A0522D';
-    meteors.forEach(m => { 
-        ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); 
-        ctx.strokeStyle = "#5D2E17"; ctx.stroke();
-    });
+    meteors.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); });
+    ctx.fillStyle = '#FFD700';
+    coins.forEach(c => { if(!c.collected) { ctx.beginPath(); ctx.arc(c.x, c.y, 14, 0, Math.PI*2); ctx.fill(); } });
 
-    // Красивые золотые монеты
-    coins.forEach(c => { 
-        if(!c.collected) { 
-            ctx.fillStyle = '#FFD700';
-            ctx.beginPath(); ctx.arc(c.x, c.y, 14, 0, Math.PI*2); ctx.fill(); 
-            ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 3; ctx.stroke();
-            ctx.fillStyle = '#fff'; ctx.font = "bold 12px Arial";
-            ctx.fillText("$", c.x - 4, c.y + 4);
-        } 
-    });
-
-    if (state.invulnerable % 10 < 5) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+    if (state.invulnerable % 10 < 5) {
+        if (playerImg.complete && playerImg.width > 0) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+        else { ctx.fillStyle = "red"; ctx.fillRect(player.x, player.y, player.width, player.height); }
+    }
     ctx.restore();
 }
 
 function resetGame() {
-    state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
+    checkLeaderboard(state.distance);
+    state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0;
     player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
-    platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60}];
+    platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal'}];
     coins = []; meteors = [];
 }
 
-playerImg.onload = update;
+update();
 </script>
 </body>
 </html>
