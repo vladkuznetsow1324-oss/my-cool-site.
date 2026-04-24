@@ -1,19 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Among Us: Space Odyssey</title>
+    <title>Among Us: Infinite Space</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; background: linear-gradient(#0f0c29, #302b63, #24243e); }
         .ui { 
             position: absolute; top: 15px; left: 15px; 
             color: #00ff00; font-family: 'Courier New', monospace; font-size: 28px;
-            text-shadow: 2px 2px 0px #000; pointer-events: none;
+            text-shadow: 2px 2px 4px #000; pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <div class="ui" id="scoreBoard">Уровень: 1 | Данные: 0</div>
+    <div class="ui" id="scoreBoard">Дистанция: 0 м</div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -30,8 +30,7 @@ resize();
 const playerImg = new Image();
 playerImg.src = 'photo1.jpg'; 
 
-let score = 0;
-let currentLevel = 0;
+let distance = 0;
 let cameraX = 0;
 
 const player = {
@@ -39,60 +38,25 @@ const player = {
     dx: 0, dy: 0, speed: 7, jumpPower: -16, grounded: false
 };
 
-// БАЗА УРОВНЕЙ
-const levels = [
-    { // УРОВЕНЬ 1
-        platforms: [
-            {x: 0, y: 550, w: 600, h: 40},
-            {x: 700, y: 400, w: 200, h: 20},
-            {x: 1000, y: 250, w: 200, h: 20},
-            {x: 1300, y: 450, w: 500, h: 100}
-        ],
-        coins: [{x: 750, y: 350}, {x: 1050, y: 200}],
-        portal: {x: 1500, y: 330}
-    },
-    { // УРОВЕНЬ 2 (Сложнее)
-        platforms: [
-            {x: 0, y: 550, w: 300, h: 40},
-            {x: 400, y: 450, w: 100, h: 20},
-            {x: 600, y: 350, w: 100, h: 20},
-            {x: 800, y: 250, w: 100, h: 20},
-            {x: 1000, y: 350, w: 100, h: 20},
-            {x: 1200, y: 450, w: 400, h: 100}
-        ],
-        coins: [{x: 420, y: 400}, {x: 820, y: 200}, {x: 1250, y: 400}],
-        portal: {x: 1450, y: 330}
-    }
-];
-
-let activePlatforms = [];
-let activeCoins = [];
-let activePortal = {};
-
-function loadLevel(num) {
-    if (num >= levels.length) {
-        alert("ВСЯ МИССИЯ ВЫПОЛНЕНА! Ты настоящий герой!");
-        currentLevel = 0;
-        score = 0;
-        loadLevel(0);
-        return;
-    }
-    const lvl = levels[num];
-    activePlatforms = lvl.platforms;
-    activeCoins = lvl.coins.map(c => ({...c, collected: false}));
-    activePortal = {...lvl.portal, w: 70, h: 120};
-    player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
-    updateUI();
-}
-
-function updateUI() {
-    document.getElementById('scoreBoard').innerText = `Уровень: ${currentLevel + 1} | Данные: ${score}`;
-}
-
 const gravity = 0.8;
 const keys = {};
 
+// Массив для хранения платформ
+let platforms = [
+    {x: 0, y: 500, w: 400, h: 40} // Стартовая платформа
+];
+
+// Функция генерации новой платформы
+function generatePlatform() {
+    const lastP = platforms[platforms.length - 1];
+    const newX = lastP.x + lastP.w + Math.random() * 150 + 50; // Случайное расстояние
+    const newY = Math.max(200, Math.min(canvas.height - 100, lastP.y + (Math.random() * 200 - 100)));
+    const newW = Math.random() * 150 + 100; // Случайная ширина
+    platforms.push({x: newX, y: newY, w: newW, h: 30});
+}
+
 function update() {
+    // Управление
     if (keys['ArrowLeft']) player.dx = -player.speed;
     else if (keys['ArrowRight']) player.dx = player.speed;
     else player.dx *= 0.8;
@@ -107,7 +71,8 @@ function update() {
     player.y += player.dy;
     player.grounded = false;
 
-    activePlatforms.forEach(p => {
+    // Столкновения и генерация
+    platforms.forEach(p => {
         if (player.x < p.x + p.w && player.x + player.width > p.x &&
             player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
             player.y = p.y - player.height;
@@ -116,22 +81,28 @@ function update() {
         }
     });
 
-    activeCoins.forEach(c => {
-        if (!c.collected && player.x < c.x + 20 && player.x + player.width > c.x &&
-            player.y < c.y + 20 && player.y + player.height > c.y) {
-            c.collected = true;
-            score++;
-            updateUI();
-        }
-    });
-
-    if (player.x + player.width > activePortal.x && player.x < activePortal.x + activePortal.w &&
-        player.y + player.height > activePortal.y) {
-        currentLevel++;
-        loadLevel(currentLevel);
+    // Если игрок приближается к последней платформе — создаем новую
+    if (player.x > platforms[platforms.length - 1].x - 1000) {
+        generatePlatform();
     }
 
-    if (player.y > canvas.height) loadLevel(currentLevel); // Упал - рестарт уровня
+    // Удаляем старые платформы (оптимизация)
+    if (platforms.length > 20) {
+        platforms.shift();
+    }
+
+    // Считаем дистанцию
+    if (player.x > distance) {
+        distance = Math.floor(player.x);
+        document.getElementById('scoreBoard').innerText = `Дистанция: ${distance} м`;
+    }
+
+    // Рестарт при падении
+    if (player.y > canvas.height + 200) {
+        player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
+        distance = 0;
+        platforms = [{x: 0, y: 500, w: 400, h: 40}];
+    }
 
     cameraX = player.x - canvas.width / 4;
     if (cameraX < 0) cameraX = 0;
@@ -140,21 +111,14 @@ function update() {
     ctx.save();
     ctx.translate(-cameraX, 0);
 
+    // Рисуем платформы в стиле "космических обломков"
     ctx.fillStyle = '#444';
-    activePlatforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
-
-    ctx.fillStyle = '#0f0';
-    activeCoins.forEach(c => {
-        if (!c.collected) {
-            ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI*2); ctx.fill();
-        }
-    });
-
-    ctx.fillStyle = '#f0f';
-    ctx.shadowBlur = 15; ctx.shadowColor = '#f0f';
-    ctx.fillRect(activePortal.x, activePortal.y, activePortal.w, activePortal.h);
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#0ff';
+    platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
     ctx.shadowBlur = 0;
 
+    // Рисуем Амонгуса
     ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
 
     ctx.restore();
@@ -163,7 +127,6 @@ function update() {
 
 window.addEventListener('keydown', e => keys[e.code] = true);
 window.addEventListener('keyup', e => keys[e.code] = false);
-loadLevel(0);
 playerImg.onload = update;
 </script>
 </body>
