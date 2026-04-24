@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Among Us: Platform Master</title>
+    <title>Among Us: Space Odyssey</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
-        canvas { display: block; background: linear-gradient(#0f0c29, #16213e); }
+        canvas { display: block; background: #050510; }
         .ui { 
             position: absolute; top: 15px; left: 15px; 
             color: #00ff00; font-family: 'Courier New', monospace; font-size: 20px;
@@ -38,9 +38,14 @@ const player = { x: 50, y: 100, width: 50, height: 50, dx: 0, dy: 0, grounded: f
 let platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60}];
 let coins = [];
 let meteors = [];
+let stars = []; // Для фона
 const keys = {};
 
-// --- [3. INPUT] ---
+// Генерируем звёзды один раз
+for(let i=0; i<100; i++) {
+    stars.push({x: Math.random()*2000, y: Math.random()*1000, s: Math.random()*2});
+}
+
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
     if (e.code === 'KeyB' && state.coins >= CONFIG.shopPrice) {
@@ -56,33 +61,34 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// --- [4. LOGIC] ---
 function generateWorld() {
     const lastP = platforms[platforms.length - 1];
-    if (player.x > lastP.x - 1000) {
-        const newX = lastP.x + lastP.w + Math.random() * 120 + 60;
-        const newY = Math.max(250, Math.min(canvas.height - 100, lastP.y + (Math.random() * 200 - 100)));
+    if (player.x > lastP.x - 1200) {
+        const newX = lastP.x + lastP.w + Math.random() * 130 + 70;
+        const newY = Math.max(150, Math.min(canvas.height - 100, lastP.y + (Math.random() * 250 - 125)));
         
         let type = 'normal';
         let rand = Math.random();
-        if (rand > 0.85) type = 'trap';    
-        else if (rand > 0.75) type = 'jump'; 
+        if (rand > 0.88) type = 'trap';    
+        else if (rand > 0.78) type = 'jump'; 
         
         let width = Math.random() * 150 + 80;
         platforms.push({x: newX, y: newY, w: width, h: 25, type: type, timer: 60, isTouched: false});
         
-        if (Math.random() > 0.5 && type === 'normal') {
+        if (Math.random() > 0.4 && type === 'normal') {
             coins.push({x: newX + width/2, y: newY - 40, collected: false});
         }
         
-        if (Math.random() > 0.7) {
+        // Сложность: метеориты чаще и быстрее со временем
+        if (Math.random() > 0.6) {
             meteors.push({
-                x: player.x + canvas.width + 300, y: Math.random() * canvas.height,
-                size: 15 + Math.random() * 20, speed: 3 + Math.random() * 5
+                x: player.x + canvas.width + 400, y: Math.random() * canvas.height,
+                size: 15 + Math.random() * 20, 
+                speed: (4 + Math.random() * 5) + (state.distance / 50000)
             });
         }
     }
-    if (platforms.length > 25) platforms.shift();
+    if (platforms.length > 30) platforms.shift();
 }
 
 function update() {
@@ -103,9 +109,8 @@ function update() {
     platforms.forEach((p, i) => {
         if (player.x < p.x + p.w && player.x + player.width > p.x &&
             player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
-            
             player.y = p.y - player.height;
-            if (p.type === 'jump') player.dy = CONFIG.jumpPower * 1.4;
+            if (p.type === 'jump') player.dy = CONFIG.jumpPower * 1.5;
             else player.dy = 0;
             player.grounded = true;
             if (p.type === 'trap') p.isTouched = true;
@@ -133,7 +138,7 @@ function update() {
         }
     });
 
-    if (player.y > canvas.height + 300) resetGame();
+    if (player.y > canvas.height + 400) resetGame();
     state.distance = Math.max(state.distance, Math.floor(player.x));
     if (state.distance > state.highScore) {
         state.highScore = state.distance;
@@ -149,22 +154,33 @@ function update() {
     requestAnimationFrame(update);
 }
 
-// --- [5. DRAW] ---
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Рисуем звёзды (двигаются медленнее камеры для эффекта глубины)
+    ctx.fillStyle = "#fff";
+    stars.forEach(s => {
+        let sx = (s.x - state.cameraX * 0.2) % canvas.width;
+        if (sx < 0) sx += canvas.width;
+        ctx.fillRect(sx, s.y, s.s, s.s);
+    });
+
     ctx.save();
     ctx.translate(-state.cameraX, 0);
 
     platforms.forEach(p => {
-        if (p.type === 'trap') ctx.fillStyle = p.isTouched ? '#f00' : '#800';
+        if (p.type === 'trap') ctx.fillStyle = p.isTouched ? '#f33' : '#800';
         else if (p.type === 'jump') ctx.fillStyle = '#0f0';
         else ctx.fillStyle = '#444';
         ctx.fillRect(p.x, p.y, p.w, p.h);
-        ctx.strokeStyle = '#fff'; ctx.strokeRect(p.x, p.y, p.w, p.h);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(p.x, p.y, p.w, p.h);
     });
 
     ctx.fillStyle = '#A0522D';
-    meteors.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); });
+    meteors.forEach(m => { 
+        ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); 
+        ctx.strokeStyle = "#5D2E17"; ctx.stroke();
+    });
 
     ctx.fillStyle = '#ff0';
     coins.forEach(c => { if(!c.collected) { ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI*2); ctx.fill(); } });
