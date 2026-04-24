@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Among Us: Modular Survivor</title>
+    <title>Among Us: Platform Master</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; background: linear-gradient(#0f0c29, #16213e); }
@@ -13,33 +13,20 @@
     </style>
 </head>
 <body>
-    <div class="ui" id="scoreBoard">
-        HP: 3 | Монеты: 0 | Рекорд: 0<br>
-        Дистанция: 0<br>
-        <span style="color: #ffff00">Нажми 'B', чтобы купить HP (10 монет)</span>
-    </div>
+    <div class="ui" id="scoreBoard">HP: 3 | Монеты: 0 | Рекорд: 0<br>Дистанция: 0</div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
-// --- [1. НАСТРОЙКИ / CONFIG] ---
+// --- [1. CONFIG] ---
 const CONFIG = {
-    playerSpeed: 7,
-    jumpPower: -16,
-    gravity: 0.8,
-    hpMax: 3,
-    shopPrice: 10,
-    meteorColor: '#A0522D',
-    coinColor: '#ffff00'
+    playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10
 };
 
-// --- [2. СОСТОЯНИЕ / STATE] ---
+// --- [2. STATE] ---
 let state = {
-    distance: 0,
-    coins: 0,
-    hp: CONFIG.hpMax,
+    distance: 0, coins: 0, hp: CONFIG.hpMax,
     highScore: localStorage.getItem('highScore') || 0,
-    invulnerable: 0,
-    cameraX: 0
+    invulnerable: 0, cameraX: 0
 };
 
 const canvas = document.getElementById('gameCanvas');
@@ -48,17 +35,16 @@ const playerImg = new Image();
 playerImg.src = 'photo1.jpg'; 
 
 const player = { x: 50, y: 100, width: 50, height: 50, dx: 0, dy: 0, grounded: false };
-let platforms = [{x: 0, y: 500, w: 400, h: 40}];
+let platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60}];
 let coins = [];
 let meteors = [];
 const keys = {};
 
-// --- [3. МАГАЗИН И УПРАВЛЕНИЕ] ---
+// --- [3. INPUT] ---
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
     if (e.code === 'KeyB' && state.coins >= CONFIG.shopPrice) {
-        state.coins -= CONFIG.shopPrice;
-        state.hp++;
+        state.coins -= CONFIG.shopPrice; state.hp++;
     }
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
@@ -70,37 +56,36 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// --- [4. ЛОГИКА / LOGIC] ---
+// --- [4. LOGIC] ---
 function generateWorld() {
     const lastP = platforms[platforms.length - 1];
     if (player.x > lastP.x - 1000) {
         const newX = lastP.x + lastP.w + Math.random() * 120 + 60;
         const newY = Math.max(250, Math.min(canvas.height - 100, lastP.y + (Math.random() * 200 - 100)));
         
-        // ВЫБОР ТИПА ПЛАТФОРМЫ
         let type = 'normal';
         let rand = Math.random();
-        if (rand > 0.85) type = 'trap';    // Красная (исчезнет)
-        else if (rand > 0.75) type = 'jump'; // Зеленая (батут)
+        if (rand > 0.85) type = 'trap';    
+        else if (rand > 0.75) type = 'jump'; 
         
         let width = Math.random() * 150 + 80;
+        platforms.push({x: newX, y: newY, w: width, h: 25, type: type, timer: 60, isTouched: false});
         
-        platforms.push({
-            x: newX, y: newY, w: width, h: 25, 
-            type: type, 
-            timer: 60, // Время для ловушки
-            isTouched: false 
-        });
-
-        // Шанс монетки только на обычных плитах
         if (Math.random() > 0.5 && type === 'normal') {
             coins.push({x: newX + width/2, y: newY - 40, collected: false});
         }
+        
+        if (Math.random() > 0.7) {
+            meteors.push({
+                x: player.x + canvas.width + 300, y: Math.random() * canvas.height,
+                size: 15 + Math.random() * 20, speed: 3 + Math.random() * 5
+            });
+        }
     }
+    if (platforms.length > 25) platforms.shift();
 }
 
 function update() {
-    // Движение
     if (keys['ArrowLeft']) player.dx = -CONFIG.playerSpeed;
     else if (keys['ArrowRight']) player.dx = CONFIG.playerSpeed;
     else player.dx *= 0.8;
@@ -115,37 +100,26 @@ function update() {
     player.y += player.dy;
     player.grounded = false;
 
-    // Столкновения
     platforms.forEach((p, i) => {
-    if (player.x < p.x + p.w && player.x + player.width > p.x &&
-        player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
-        
-        player.y = p.y - player.height;
-        player.grounded = true;
-
-        // ЭФФЕКТЫ ПЛИТ
-        if (p.type === 'jump') {
-            player.dy = CONFIG.jumpPower * 1.5; // Прыгаем выше!
-        } else {
-            player.dy = 0;
+        if (player.x < p.x + p.w && player.x + player.width > p.x &&
+            player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
+            
+            player.y = p.y - player.height;
+            if (p.type === 'jump') player.dy = CONFIG.jumpPower * 1.4;
+            else player.dy = 0;
+            player.grounded = true;
+            if (p.type === 'trap') p.isTouched = true;
         }
-
-        if (p.type === 'trap') p.isTouched = true; // Запускаем таймер ловушки
-    }
-
-    // Если на ловушку наступили — она исчезает
-    if (p.isTouched) {
-        p.timer--;
-        if (p.timer <= 0) platforms.splice(i, 1);
-    }
-});
-
+        if (p.isTouched) {
+            p.timer--;
+            if (p.timer <= 0) platforms.splice(i, 1);
+        }
+    });
 
     coins.forEach(c => {
         if (!c.collected && player.x < c.x + 20 && player.x + player.width > c.x &&
             player.y < c.y + 20 && player.y + player.height > c.y) {
-            c.collected = true;
-            state.coins++;
+            c.collected = true; state.coins++;
         }
     });
 
@@ -154,15 +128,12 @@ function update() {
         m.x -= m.speed;
         let dist = Math.sqrt(Math.pow((player.x + 25) - m.x, 2) + Math.pow((player.y + 25) - m.y, 2));
         if (dist < m.size + 15 && state.invulnerable <= 0) {
-            state.hp--;
-            state.invulnerable = 60;
-            meteors.splice(i, 1);
+            state.hp--; state.invulnerable = 60; meteors.splice(i, 1);
             if (state.hp <= 0) resetGame();
         }
     });
 
     if (player.y > canvas.height + 300) resetGame();
-    
     state.distance = Math.max(state.distance, Math.floor(player.x));
     if (state.distance > state.highScore) {
         state.highScore = state.distance;
@@ -170,43 +141,43 @@ function update() {
     }
     
     state.cameraX = player.x - canvas.width / 4;
-    
     document.getElementById('scoreBoard').innerHTML = 
-        `HP: ${state.hp} | Монеты: ${state.coins} | Рекорд: ${state.highScore}<br>` +
-        `Дистанция: ${state.distance}<br>` +
-        `<span style="color: #ffff00">Нажми 'B', чтобы купить HP (10 монет)</span>`;
+        `HP: ${state.hp} | Монеты: ${state.coins} | Рекорд: ${state.highScore}<br>Дистанция: ${state.distance}<br><span style="color:#ff0">Жми 'B' - купить HP (10 монет)</span>`;
 
     generateWorld();
     draw();
     requestAnimationFrame(update);
 }
 
-// --- [5. ОТРИСОВКА / DRAW] ---
+// --- [5. DRAW] ---
 function draw() {
-    if (p.type === 'trap') ctx.fillStyle = p.isTouched ? '#ff0000' : '#880000';
-else if (p.type === 'jump') ctx.fillStyle = '#00ff00';
-else ctx.fillStyle = '#444';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(-state.cameraX, 0);
 
+    platforms.forEach(p => {
+        if (p.type === 'trap') ctx.fillStyle = p.isTouched ? '#f00' : '#800';
+        else if (p.type === 'jump') ctx.fillStyle = '#0f0';
+        else ctx.fillStyle = '#444';
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        ctx.strokeStyle = '#fff'; ctx.strokeRect(p.x, p.y, p.w, p.h);
+    });
 
-    ctx.fillStyle = CONFIG.meteorColor;
+    ctx.fillStyle = '#A0522D';
     meteors.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); });
 
-    ctx.fillStyle = '#444';
-    ctx.strokeStyle = '#0ff';
-    platforms.forEach(p => { ctx.fillRect(p.x, p.y, p.w, p.h); ctx.strokeRect(p.x, p.y, p.w, p.h); });
-
-    ctx.fillStyle = CONFIG.coinColor;
-    coins.forEach(c => { if(!c.collected) { ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, Math.PI*2); ctx.fill(); } });
+    ctx.fillStyle = '#ff0';
+    coins.forEach(c => { if(!c.collected) { ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI*2); ctx.fill(); } });
 
     if (state.invulnerable % 10 < 5) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
-
     ctx.restore();
 }
 
 function resetGame() {
-    state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
+    state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0;
     player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
-    platforms = [{x: 0, y: 500, w: 400, h: 40}]; coins = []; meteors = [];
+    platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60}];
+    coins = []; meteors = [];
 }
 
 playerImg.onload = update;
