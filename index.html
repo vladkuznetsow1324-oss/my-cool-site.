@@ -1,47 +1,65 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Amongus Space Platformer V67</title>
+    <title>Among Us: Space Odyssey</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
         canvas { display: block; background: #050510; }
+        
+        /* Главное меню */
+        #menu {
+            position: absolute; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(0, 0, 0, 0.8); z-index: 100; color: #00ff00;
+        }
+        #menu h1 { font-size: 50px; margin-bottom: 20px; text-shadow: 0 0 20px #00ff00; }
+        #menu button {
+            padding: 15px 40px; font-size: 24px; cursor: pointer;
+            background: transparent; border: 2px solid #00ff00; color: #00ff00;
+            transition: 0.3s; font-family: inherit;
+        }
+        #menu button:hover { background: #00ff00; color: #000; box-shadow: 0 0 30px #00ff00; }
+
         .ui { 
             position: absolute; top: 15px; left: 15px; 
-            color: #00ff00; font-family: 'Courier New', monospace; font-size: 18px;
-            text-shadow: 2px 2px 4px #000; pointer-events: none; z-index: 10;
+            color: #00ff00; font-size: 20px; pointer-events: none;
+            text-shadow: 2px 2px 4px #000;
         }
     </style>
 </head>
 <body>
-    <div class="ui" id="scoreBoard">Нажми любую клавишу, чтобы начать миссию...</div>
+    <div id="menu">
+        <h1>AMONG US: ODYSSEY</h1>
+        <p>Стрелки — движение | B — купить HP</p>
+        <button onclick="startGame()">НАЧАТЬ МИССИЮ</button>
+    </div>
+
+    <div class="ui" id="scoreBoard" style="display: none;">
+        HP: 3 | Монеты: 0 | Рекорд: 0<br>Дистанция: 0
+    </div>
+    
     <canvas id="gameCanvas"></canvas>
 
 <script>
-// --- [1. CONFIGURATION] ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- [1. НАСТРОЙКИ] ---
 const CONFIG = {
-    playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10,
-    trapColor: '#f00', jumpColor: '#0f0', normalColor: '#444', coinColor: '#FFD700'
+    playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10
 };
 
-// --- [2. STATE & LEADERBOARD] ---
 let state = {
     distance: 0, coins: 0, hp: CONFIG.hpMax,
     highScore: localStorage.getItem('highScore') || 0,
-    invulnerable: 0, cameraX: 0, gameStarted: false, musicStarted: false
+    invulnerable: 0, cameraX: 0, gameActive: false
 };
 
-let leaderboard = JSON.parse(localStorage.getItem('localLeaderboard')) || [];
-
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
 const playerImg = new Image();
-playerImg.src = 'photo1'; // Твое имя файла
+playerImg.src = 'Photo1.jpg'; // Вернули правильное имя
 
-const bgMusic = new Audio('music.mp3');
-bgMusic.loop = true;
-
-const player = { x: 50, y: 100, width: 50, height: 50, dx: 0, dy: 0, grounded: false };
-let platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60}];
+const player = { x: 50, y: 100, width: 55, height: 55, dx: 0, dy: 0, grounded: false };
+let platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal'}];
 let coins = [];
 let meteors = [];
 let stars = [];
@@ -49,13 +67,15 @@ const keys = {};
 
 for(let i=0; i<120; i++) stars.push({x: Math.random()*2000, y: Math.random()*1000, s: Math.random()*2.5});
 
-// --- [3. INPUT & SHOP] ---
+function startGame() {
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('scoreBoard').style.display = 'block';
+    state.gameActive = true;
+    resetGame();
+}
+
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
-    if (!state.gameStarted) state.gameStarted = true;
-    if (!state.musicStarted) { bgMusic.play().catch(() => {}); state.musicStarted = true; }
-    
-    // МАГАЗИН
     if (e.code === 'KeyB' && state.coins >= CONFIG.shopPrice) {
         state.coins -= CONFIG.shopPrice; state.hp++;
     }
@@ -69,37 +89,22 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// --- [4. CORE LOGIC] ---
-function checkLeaderboard(score) {
-    if (leaderboard.length < 5 || score > leaderboard[leaderboard.length - 1].score) {
-        const name = prompt("НОВЫЙ РЕКОРД! Введите имя для ТОП-5:", "Player");
-        if (name) {
-            leaderboard.push({name, score});
-            leaderboard.sort((a, b) => b.score - a.score);
-            leaderboard = leaderboard.slice(0, 5);
-            localStorage.setItem('localLeaderboard', JSON.stringify(leaderboard));
-        }
-    }
-}
-
 function generateWorld() {
     const lastP = platforms[platforms.length - 1];
     if (player.x > lastP.x - 1200) {
         const newX = lastP.x + lastP.w + Math.random() * 140 + 70;
         const newY = Math.max(150, Math.min(canvas.height - 150, lastP.y + (Math.random() * 260 - 130)));
         let type = Math.random() > 0.88 ? 'trap' : (Math.random() > 0.8 ? 'jump' : 'normal');
-        let width = Math.random() * 150 + 90;
-        platforms.push({x: newX, y: newY, w: width, h: 25, type, isTouched: false, timer: 60});
-        if (Math.random() > 0.4 && type === 'normal') coins.push({x: newX + width/2, y: newY - 45, collected: false});
-        if (Math.random() > 0.6) meteors.push({x: player.x + canvas.width + 400, y: Math.random()*canvas.height, size: 15+Math.random()*15, speed: 4+(state.distance/15000)});
+        platforms.push({x: newX, y: newY, w: Math.random()*150+90, h: 25, type, isTouched: false, timer: 60});
+        if (Math.random() > 0.4 && type === 'normal') coins.push({x: newX + 50, y: newY - 45, collected: false});
+        if (Math.random() > 0.6) meteors.push({x: player.x + canvas.width + 400, y: Math.random()*canvas.height, size: 20, speed: 5 + (state.distance/20000)});
     }
     if (platforms.length > 30) platforms.shift();
 }
 
 function update() {
-    if (!state.gameStarted) { draw(); requestAnimationFrame(update); return; }
+    if (!state.gameActive) { draw(); requestAnimationFrame(update); return; }
 
-    // Движение
     if (keys['ArrowLeft']) player.dx = -CONFIG.playerSpeed;
     else if (keys['ArrowRight']) player.dx = CONFIG.playerSpeed;
     else player.dx *= 0.8;
@@ -110,7 +115,6 @@ function update() {
     player.y += player.dy;
     player.grounded = false;
 
-    // Коллизии платформ
     platforms.forEach((p, i) => {
         if (player.x < p.x + p.w && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
             player.y = p.y - player.height;
@@ -121,14 +125,12 @@ function update() {
         if (p.isTouched) { p.timer--; if (p.timer <= 0) platforms.splice(i, 1); }
     });
 
-    // Сбор монет
     coins.forEach(c => {
         if (!c.collected && player.x < c.x + 25 && player.x + player.width > c.x - 25 && player.y < c.y + 25 && player.y + player.height > c.y - 25) {
             c.collected = true; state.coins++;
         }
     });
 
-    // Метеориты
     if (state.invulnerable > 0) state.invulnerable--;
     meteors.forEach((m, i) => {
         m.x -= m.speed;
@@ -140,26 +142,27 @@ function update() {
     });
 
     if (player.y > canvas.height + 400) resetGame();
+    
     state.distance = Math.max(state.distance, Math.floor(player.x));
+    if (state.distance > state.highScore) {
+        state.highScore = state.distance;
+        localStorage.setItem('highScore', state.highScore);
+    }
     state.cameraX = player.x - canvas.width / 4;
     
-    // UI Update
-    let leadText = leaderboard.map((r, i) => `${i+1}. ${r.name}: ${r.score}`).join('<br>');
     document.getElementById('scoreBoard').innerHTML = 
-        `HP: ${state.hp} | Монеты: ${state.coins}<br>Дистанция: ${state.distance}<br>` +
-        `<div style="color:#aaa; font-size:14px; margin-top:5px;">ТОП-5 ЛОКАЛЬНО:<br>${leadText}</div>` +
-        `<br><span style="color:#ff0">Жми 'B' - купить HP (10 монет)</span>`;
+        `HP: ${state.hp} | Монеты: ${state.coins} | Рекорд: ${state.highScore}<br>Дистанция: ${state.distance}<br>` +
+        `<span style="color:#ff0">Жми 'B' - купить HP (10 монет)</span>`;
 
     generateWorld();
     draw();
     requestAnimationFrame(update);
 }
 
-// --- [5. VISUALS / DRAW] ---
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Parallax Stars
+    // Звезды
     ctx.fillStyle = "#fff";
     stars.forEach(s => {
         let sx = (s.x - state.cameraX * 0.2) % canvas.width;
@@ -170,7 +173,7 @@ function draw() {
     ctx.save();
     ctx.translate(-state.cameraX, 0);
 
-    // Neon Platforms
+    // Платформы
     platforms.forEach(p => {
         ctx.shadowBlur = 15;
         if (p.type === 'trap') { ctx.fillStyle = p.isTouched ? '#f33' : '#800'; ctx.shadowColor = '#f00'; }
@@ -178,23 +181,23 @@ function draw() {
         else { ctx.fillStyle = '#444'; ctx.shadowColor = '#0ff'; }
         ctx.fillRect(p.x, p.y, p.w, p.h);
         ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(p.x, p.y, p.w, p.h);
+        ctx.strokeStyle = '#fff'; ctx.strokeRect(p.x, p.y, p.w, p.h);
     });
 
-    // Space Rocks
+    // Метеориты
     ctx.fillStyle = '#A0522D';
-    meteors.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle = "#5D2E17"; ctx.stroke(); });
+    meteors.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); });
 
-    // Gold Coins
+    // Монеты
+    ctx.fillStyle = '#FFD700';
     coins.forEach(c => { 
         if(!c.collected) { 
-            ctx.fillStyle = CONFIG.coinColor; ctx.beginPath(); ctx.arc(c.x, c.y, 14, 0, Math.PI*2); ctx.fill(); 
-            ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 3; ctx.stroke();
-            ctx.fillStyle = '#fff'; ctx.font = "bold 12px Arial"; ctx.fillText("$", c.x - 4, c.y + 4);
+            ctx.beginPath(); ctx.arc(c.x, c.y, 14, 0, Math.PI*2); ctx.fill(); 
+            ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 2; ctx.stroke();
         } 
     });
 
-    // Player (Among Us or Backup Square)
+    // Игрок
     if (state.invulnerable % 10 < 5) {
         if (playerImg.complete && playerImg.width > 0) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
         else { ctx.fillStyle = "red"; ctx.fillRect(player.x, player.y, player.width, player.height); }
@@ -203,7 +206,6 @@ function draw() {
 }
 
 function resetGame() {
-    checkLeaderboard(state.distance);
     state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
     player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
     platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal'}];
