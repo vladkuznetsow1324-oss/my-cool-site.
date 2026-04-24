@@ -78,9 +78,14 @@ for(let i=0; i<120; i++) stars.push({x: Math.random()*2000, y: Math.random()*100
 function startGame() {
     document.getElementById('menu').style.display = 'none';
     document.getElementById('scoreBoard').style.display = 'block';
+    
+    // ВОТ ЭТА СТРОЧКА ВКЛЮЧАЕТ МУЗЫКУ
+    document.getElementById('bgMusic').play().catch(() => console.log("Музыка не найдена"));
+    
     state.gameActive = true;
     resetGame();
 }
+
 
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
