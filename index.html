@@ -17,10 +17,32 @@
     <canvas id="gameCanvas"></canvas>
 
 <script>
-// --- [1. КОНФИГУРАЦИЯ] ---
+// --- [1. CONFIG + LEADERBOARD] ---
 const CONFIG = {
     playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10
 };
+
+// Загружаем таблицу из памяти или создаем пустую
+let leaderboard = JSON.parse(localStorage.getItem('localLeaderboard')) || [];
+
+function saveHighScore(name, score) {
+    leaderboard.push({name, score});
+    leaderboard.sort((a, b) => b.score - a.score); // Сортируем: лучшие сверху
+    leaderboard = leaderboard.slice(0, 5); // Оставляем только ТОП-5
+    localStorage.setItem('localLeaderboard', JSON.stringify(leaderboard));
+}
+
+// --- [ОБНОВЛЕННЫЙ ИНТЕРФЕЙС] ---
+function drawUI() {
+    let leaderText = leaderboard.map((res, i) => `${i+1}. ${res.name}: ${res.score}`).join('<br>');
+    
+    document.getElementById('scoreBoard').innerHTML = 
+        `HP: ${state.hp} | Монеты: ${state.coins}<br>` +
+        `Дистанция: ${state.distance} | Рекорд: ${state.highScore}<br>` +
+        `<div style="color:#aaa; font-size:14px; margin-top:10px;">ТОП-5 ЛОКАЛЬНО:<br>${leaderText}</div>` +
+        `<br><span style="color:#ff0">Жми 'B' - купить HP (10 монет)</span>`;
+}
+//-------------------------------------------------------------------------------------------------------------------
 
 // --- [2. СОСТОЯНИЕ] ---
 let state = {
