@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Among Us: Mission Complete</title>
+    <title>Among Us: Space Odyssey</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
-        canvas { display: block; background: linear-gradient(#1a1a2e, #16213e); }
+        canvas { display: block; background: linear-gradient(#0f0c29, #302b63, #24243e); }
         .ui { 
             position: absolute; top: 15px; left: 15px; 
             color: #00ff00; font-family: 'Courier New', monospace; font-size: 28px;
@@ -13,7 +13,7 @@
     </style>
 </head>
 <body>
-    <div class="ui" id="scoreBoard">Собрано данных: 0</div>
+    <div class="ui" id="scoreBoard">Уровень: 1 | Данные: 0</div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -31,40 +31,68 @@ const playerImg = new Image();
 playerImg.src = 'photo1.jpg'; 
 
 let score = 0;
+let currentLevel = 0;
 let cameraX = 0;
-let win = false;
 
 const player = {
     x: 50, y: 100, width: 50, height: 50,
     dx: 0, dy: 0, speed: 7, jumpPower: -16, grounded: false
 };
 
-const portal = { x: 2600, y: 0, w: 80, h: 120 }; // Координаты финиша
+// БАЗА УРОВНЕЙ
+const levels = [
+    { // УРОВЕНЬ 1
+        platforms: [
+            {x: 0, y: 550, w: 600, h: 40},
+            {x: 700, y: 400, w: 200, h: 20},
+            {x: 1000, y: 250, w: 200, h: 20},
+            {x: 1300, y: 450, w: 500, h: 100}
+        ],
+        coins: [{x: 750, y: 350}, {x: 1050, y: 200}],
+        portal: {x: 1500, y: 330}
+    },
+    { // УРОВЕНЬ 2 (Сложнее)
+        platforms: [
+            {x: 0, y: 550, w: 300, h: 40},
+            {x: 400, y: 450, w: 100, h: 20},
+            {x: 600, y: 350, w: 100, h: 20},
+            {x: 800, y: 250, w: 100, h: 20},
+            {x: 1000, y: 350, w: 100, h: 20},
+            {x: 1200, y: 450, w: 400, h: 100}
+        ],
+        coins: [{x: 420, y: 400}, {x: 820, y: 200}, {x: 1250, y: 400}],
+        portal: {x: 1450, y: 330}
+    }
+];
+
+let activePlatforms = [];
+let activeCoins = [];
+let activePortal = {};
+
+function loadLevel(num) {
+    if (num >= levels.length) {
+        alert("ВСЯ МИССИЯ ВЫПОЛНЕНА! Ты настоящий герой!");
+        currentLevel = 0;
+        score = 0;
+        loadLevel(0);
+        return;
+    }
+    const lvl = levels[num];
+    activePlatforms = lvl.platforms;
+    activeCoins = lvl.coins.map(c => ({...c, collected: false}));
+    activePortal = {...lvl.portal, w: 70, h: 120};
+    player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
+    updateUI();
+}
+
+function updateUI() {
+    document.getElementById('scoreBoard').innerText = `Уровень: ${currentLevel + 1} | Данные: ${score}`;
+}
+
 const gravity = 0.8;
 const keys = {};
 
-const platforms = [
-    {x: 0, y: canvas.height - 40, w: 1000, h: 40},
-    {x: 300, y: canvas.height - 180, w: 150, h: 20},
-    {x: 600, y: canvas.height - 300, w: 150, h: 20},
-    {x: 1100, y: canvas.height - 200, w: 400, h: 40}, // Остров
-    {x: 1600, y: canvas.height - 350, w: 150, h: 20},
-    {x: 1900, y: canvas.height - 250, w: 150, h: 20},
-    {x: 2200, y: canvas.height - 400, w: 150, h: 20},
-    {x: 2500, y: canvas.height - 150, w: 500, h: 150} // Финишная площадка
-];
-
-let coins = [
-    {x: 350, y: canvas.height - 230, collected: false},
-    {x: 650, y: canvas.height - 350, collected: false},
-    {x: 1200, y: canvas.height - 250, collected: false},
-    {x: 1650, y: canvas.height - 400, collected: false},
-    {x: 2250, y: canvas.height - 450, collected: false}
-];
-
 function update() {
-    if (win) return;
-
     if (keys['ArrowLeft']) player.dx = -player.speed;
     else if (keys['ArrowRight']) player.dx = player.speed;
     else player.dx *= 0.8;
@@ -79,8 +107,7 @@ function update() {
     player.y += player.dy;
     player.grounded = false;
 
-    // Столкновения с платформами
-    platforms.forEach(p => {
+    activePlatforms.forEach(p => {
         if (player.x < p.x + p.w && player.x + player.width > p.x &&
             player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
             player.y = p.y - player.height;
@@ -89,24 +116,22 @@ function update() {
         }
     });
 
-    // Сбор монет
-    coins.forEach(c => {
+    activeCoins.forEach(c => {
         if (!c.collected && player.x < c.x + 20 && player.x + player.width > c.x &&
             player.y < c.y + 20 && player.y + player.height > c.y) {
             c.collected = true;
             score++;
-            document.getElementById('scoreBoard').innerText = "Собрано данных: " + score;
+            updateUI();
         }
     });
 
-    // Проверка финиша
-    portal.y = canvas.height - 270;
-    if (player.x + player.width > portal.x && player.x < portal.x + portal.w &&
-        player.y + player.height > portal.y) {
-        win = true;
-        alert("МИССИЯ ВЫПОЛНЕНА! Ты собрал " + score + " монет.");
-        location.reload(); // Перезапуск
+    if (player.x + player.width > activePortal.x && player.x < activePortal.x + activePortal.w &&
+        player.y + player.height > activePortal.y) {
+        currentLevel++;
+        loadLevel(currentLevel);
     }
+
+    if (player.y > canvas.height) loadLevel(currentLevel); // Упал - рестарт уровня
 
     cameraX = player.x - canvas.width / 4;
     if (cameraX < 0) cameraX = 0;
@@ -115,28 +140,21 @@ function update() {
     ctx.save();
     ctx.translate(-cameraX, 0);
 
-    // Платформы
-    ctx.fillStyle = '#333';
-    platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
+    ctx.fillStyle = '#444';
+    activePlatforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
 
-    // Монетки
-    ctx.fillStyle = '#00ff00';
-    coins.forEach(c => {
+    ctx.fillStyle = '#0f0';
+    activeCoins.forEach(c => {
         if (!c.collected) {
-            ctx.beginPath();
-            ctx.arc(c.x, c.y, 8, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI*2); ctx.fill();
         }
     });
 
-    // Портал
     ctx.fillStyle = '#f0f';
-    ctx.shadowBlur = 20;
-    ctx.shadowColor = '#f0f';
-    ctx.fillRect(portal.x, portal.y, portal.w, portal.h);
+    ctx.shadowBlur = 15; ctx.shadowColor = '#f0f';
+    ctx.fillRect(activePortal.x, activePortal.y, activePortal.w, activePortal.h);
     ctx.shadowBlur = 0;
 
-    // Игрок
     ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
 
     ctx.restore();
@@ -145,6 +163,7 @@ function update() {
 
 window.addEventListener('keydown', e => keys[e.code] = true);
 window.addEventListener('keyup', e => keys[e.code] = false);
+loadLevel(0);
 playerImg.onload = update;
 </script>
 </body>
