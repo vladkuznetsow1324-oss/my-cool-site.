@@ -1,22 +1,51 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Мой Приколдес</title>
+    <title>Мой Приколдес + Игра</title>
     <style>
-        body { background: #f0f0f0; text-align: center; font-family: sans-serif; }
-        img { width: 300px; border-radius: 15px; margin: 10px; transition: transform 0.3s; }
-        img:hover { transform: scale(1.1) rotate(5deg); } /* Картинка будет дергаться при наведении */
+        body { background: #f0f0f0; text-align: center; font-family: 'Comic Sans MS', sans-serif; transition: 0.3s; }
+        .container { margin-top: 50px; }
+        img { width: 300px; border-radius: 15px; cursor: pointer; transition: transform 0.1s; }
+        img:active { transform: scale(0.9); } /* Эффект нажатия */
         h1 { color: #ff4500; }
+        #counter { font-size: 40px; color: #333; margin: 20px; }
+        .btn { padding: 10px 20px; font-size: 18px; cursor: pointer; background: #ff4500; color: white; border: none; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <h1>Добро пожаловать на мой секретный сайт!</h1>
-    <p>Тут чисто по приколу фотки:</p>
+
+    <h1>Мега-Кликер 3000!</h1>
+    <p>Кликай на картинку, чтобы собирать очки:</p>
     
-    <!-- Вместо 'photo1.jpg' напишите названия своих файлов с картинками -->
-    <img src="photo1.jpg">
-    <img src="photo2.jpg">
+    <div id="counter">Очки: 0</div>
+
+    <!-- Кликаем по первой картинке -->
+    <img src="photo1.jpg" onclick="addPoint()">
     
-    <p>Никаких водяных знаков, только чистый стиль.</p>
+    <div class="container">
+        <button class="btn" onclick="resetGame()">Сбросить счет</button>
+    </div>
+
+    <script>
+        let score = 0;
+        const counterElement = document.getElementById('counter');
+
+        function addPoint() {
+            score++;
+            counterElement.innerText = "Очки: " + score;
+            
+            // Маленький прикол: каждый 10-й клик меняет цвет фона
+            if (score % 10 === 0) {
+                document.body.style.backgroundColor = '#' + Math.floor(Math.random()*16777215).toString(16);
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            counterElement.innerText = "Очки: 0";
+            document.body.style.backgroundColor = "#f0f0f0";
+        }
+    </script>
+
 </body>
 </html>
