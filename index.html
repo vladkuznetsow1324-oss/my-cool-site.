@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Among Us: Music & Gold</title>
+    <title>Among Us: Fixed & Golden</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; background: #050510; }
@@ -16,18 +16,13 @@
     <div class="ui" id="scoreBoard">HP: 3 | Монеты: 0 | Рекорд: 0<br>Дистанция: 0</div>
     <canvas id="gameCanvas"></canvas>
 
-    <!-- Аудио-плеер для фоновой музыки -->
-    <audio id="bgMusic" loop>
-        <source src="music.mp3" type="audio/mpeg">
-    </audio>
-
 <script>
-// Настройки
+// --- [1. КОНФИГУРАЦИЯ] ---
 const CONFIG = {
     playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10
 };
 
-// Состояние
+// --- [2. СОСТОЯНИЕ] ---
 let state = {
     distance: 0, coins: 0, hp: CONFIG.hpMax,
     highScore: localStorage.getItem('highScore') || 0,
@@ -44,18 +39,24 @@ let platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal', isTouched: false,
 let coins = [];
 let meteors = [];
 let stars = [];
+const keys = {};
 
+// Генерируем звезды для фона
 for(let i=0; i<100; i++) {
     stars.push({x: Math.random()*2000, y: Math.random()*1000, s: Math.random()*2});
 }
 
-// Запуск музыки при первом клике/нажатии
+// Создаем музыку программно, чтобы не ломать игру
+const bgMusic = new Audio('music.mp3');
+bgMusic.loop = true;
+
 window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    // Пытаемся запустить музыку только при первом нажатии
     if (!state.musicStarted) {
-        document.getElementById('bgMusic').play();
+        bgMusic.play().catch(() => {}); // Если файла нет, просто игнорируем ошибку
         state.musicStarted = true;
     }
-    keys[e.code] = true;
     if (e.code === 'KeyB' && state.coins >= CONFIG.shopPrice) {
         state.coins -= CONFIG.shopPrice; state.hp++;
     }
@@ -69,6 +70,7 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// --- [3. ЛОГИКА] ---
 function generateWorld() {
     const lastP = platforms[platforms.length - 1];
     if (player.x > lastP.x - 1200) {
@@ -84,7 +86,6 @@ function generateWorld() {
         platforms.push({x: newX, y: newY, w: width, h: 25, type: type, timer: 60, isTouched: false});
         
         if (Math.random() > 0.4 && type === 'normal') {
-            // Монетки стали чуть выше и координаты точнее
             coins.push({x: newX + width/2, y: newY - 45, collected: false});
         }
         
@@ -129,10 +130,9 @@ function update() {
         }
     });
 
-    // Сбор монет (зона сбора чуть больше для удобства)
     coins.forEach(c => {
-        if (!c.collected && player.x < c.x + 25 && player.x + player.width > c.x - 25 &&
-            player.y < c.y + 25 && player.y + player.height > c.y - 25) {
+        if (!c.collected && player.x < c.x + 20 && player.x + player.width > c.x - 20 &&
+            player.y < c.y + 20 && player.y + player.height > c.y - 20) {
             c.collected = true; state.coins++;
         }
     });
@@ -163,6 +163,7 @@ function update() {
     requestAnimationFrame(update);
 }
 
+// --- [4. ОТРИСОВКА] ---
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
@@ -190,14 +191,14 @@ function draw() {
         ctx.strokeStyle = "#5D2E17"; ctx.stroke();
     });
 
-    // КРАСИВАЯ МОНЕТКА
+    // Красивые золотые монеты
     coins.forEach(c => { 
         if(!c.collected) { 
-            ctx.fillStyle = '#FFD700'; // Золотой
+            ctx.fillStyle = '#FFD700';
             ctx.beginPath(); ctx.arc(c.x, c.y, 14, 0, Math.PI*2); ctx.fill(); 
-            ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 3; ctx.stroke(); // Темный контур
-            ctx.fillStyle = '#FFF'; ctx.font = "bold 12px Arial";
-            ctx.fillText("$", c.x - 4, c.y + 4); // Символ на монетке
+            ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 3; ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.font = "bold 12px Arial";
+            ctx.fillText("$", c.x - 4, c.y + 4);
         } 
     });
 
@@ -206,13 +207,12 @@ function draw() {
 }
 
 function resetGame() {
-    state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0;
+    state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
     player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
     platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60}];
     coins = []; meteors = [];
 }
 
-const keys = {};
 playerImg.onload = update;
 </script>
 </body>
