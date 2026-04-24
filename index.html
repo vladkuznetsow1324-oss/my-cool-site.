@@ -1,26 +1,25 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Among Us Platformer Fullscreen</title>
+    <title>Among Us Adventure</title>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background: #222; }
+        body { margin: 0; overflow: hidden; background: #222; }
         canvas { display: block; background: #87CEEB; }
         .ui { 
             position: absolute; top: 10px; left: 10px; 
-            color: white; font-family: sans-serif; pointer-events: none;
-            text-shadow: 2px 2px 4px #000;
+            color: white; font-family: sans-serif; font-size: 24px;
+            text-shadow: 2px 2px 4px #000; pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <div class="ui">Используй стрелки для движения! Прыгай по платформам.</div>
+    <div class="ui" id="scoreBoard">Монеты: 0</div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Функция для растягивания на весь экран
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -29,32 +28,44 @@ window.addEventListener('resize', resize);
 resize();
 
 const playerImg = new Image();
-playerImg.src = 'photo1.jpg'; // Твой Амонгус
+playerImg.src = 'photo1.jpg'; 
+
+let score = 0;
+let cameraX = 0;
 
 const player = {
-    x: 50, y: 100, 
-    width: 60, height: 60, // Можно чуть увеличить размер
-    dx: 0, dy: 0, 
-    speed: 7, jumpPower: -15,
+    x: 50, y: 100, width: 50, height: 50,
+    dx: 0, dy: 0, speed: 7, jumpPower: -16,
     grounded: false
 };
 
 const gravity = 0.8;
 const keys = {};
 
-// Генерируем платформы в зависимости от размера экрана
+// Платформы (теперь их больше и они дальше)
 const platforms = [
-    {x: 0, y: canvas.height - 40, w: 5000, h: 40}, // Длинный пол
-    {x: 300, y: canvas.height - 200, w: 200, h: 30},
-    {x: 600, y: canvas.height - 350, w: 200, h: 30},
-    {x: 900, y: canvas.height - 250, w: 200, h: 30},
-    {x: 1200, y: canvas.height - 400, w: 250, h: 30}
+    {x: 0, y: canvas.height - 40, w: 3000, h: 40},
+    {x: 300, y: canvas.height - 180, w: 150, h: 20},
+    {x: 600, y: canvas.height - 300, w: 150, h: 20},
+    {x: 900, y: canvas.height - 200, w: 150, h: 20},
+    {x: 1200, y: canvas.height - 350, w: 200, h: 20},
+    {x: 1600, y: canvas.height - 250, w: 200, h: 20},
+    {x: 2000, y: canvas.height - 380, w: 300, h: 20}
+];
+
+// Монетки
+let coins = [
+    {x: 350, y: canvas.height - 230, collected: false},
+    {x: 650, y: canvas.height - 350, collected: false},
+    {x: 950, y: canvas.height - 250, collected: false},
+    {x: 1250, y: canvas.height - 450, collected: false},
+    {x: 2100, y: canvas.height - 430, collected: false}
 ];
 
 function update() {
     if (keys['ArrowLeft']) player.dx = -player.speed;
     else if (keys['ArrowRight']) player.dx = player.speed;
-    else player.dx *= 0.8; // Плавная остановка
+    else player.dx *= 0.8;
 
     if (keys['ArrowUp'] && player.grounded) {
         player.dy = player.jumpPower;
@@ -66,7 +77,7 @@ function update() {
     player.y += player.dy;
     player.grounded = false;
 
-    // Столкновения
+    // Столкновения с полом и платформами
     platforms.forEach(p => {
         if (player.x < p.x + p.w && player.x + player.width > p.x &&
             player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
@@ -76,27 +87,49 @@ function update() {
         }
     });
 
-    // Ограничение по границам экрана (чтобы не улетал влево)
-    if (player.x < 0) player.x = 0;
+    // Сбор монет
+    coins.forEach(c => {
+        if (!c.collected && player.x < c.x + 20 && player.x + player.width > c.x &&
+            player.y < c.y + 20 && player.y + player.height > c.y) {
+            c.collected = true;
+            score++;
+            document.getElementById('scoreBoard').innerText = "Монеты: " + score;
+        }
+    });
+
+    // Камера следует за игроком
+    cameraX = player.x - canvas.width / 4;
+    if (cameraX < 0) cameraX = 0;
 
     // Отрисовка
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
+    ctx.save();
+    ctx.translate(-cameraX, 0); // Сдвигаем всё содержимое под камеру
+
     // Рисуем платформы
     ctx.fillStyle = '#5C4033';
-    platforms.forEach(p => {
-        ctx.fillRect(p.x, p.y, p.w, p.h);
+    platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
+
+    // Рисуем монетки
+    ctx.fillStyle = '#FFD700';
+    coins.forEach(c => {
+        if (!c.collected) {
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, 10, 0, Math.PI * 2);
+            ctx.fill();
+        }
     });
 
-    // Рисуем Амонгуса
+    // Рисуем персонажа
     ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
 
+    ctx.restore();
     requestAnimationFrame(update);
 }
 
 window.addEventListener('keydown', e => keys[e.code] = true);
 window.addEventListener('keyup', e => keys[e.code] = false);
-
 playerImg.onload = update;
 </script>
 </body>
