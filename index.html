@@ -1,78 +1,94 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Мой 2D Платформер V2</title>
+    <title>Among Us Platformer Fullscreen</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
-        canvas { display: block; background: #87CEEB; margin: 0 auto; border: 5px solid #fff; }
-        .info { color: white; text-align: center; position: absolute; width: 100%; top: 10px; }
+        body { margin: 0; padding: 0; overflow: hidden; background: #222; }
+        canvas { display: block; background: #87CEEB; }
+        .ui { 
+            position: absolute; top: 10px; left: 10px; 
+            color: white; font-family: sans-serif; pointer-events: none;
+            text-shadow: 2px 2px 4px #000;
+        }
     </style>
 </head>
 <body>
-    <div class="info">Стрелки: Движение и Прыжок. Доберись до правой стороны!</div>
+    <div class="ui">Используй стрелки для движения! Прыгай по платформам.</div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-canvas.width = 800;
-canvas.height = 400;
+// Функция для растягивания на весь экран
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
 
-// Твой персонаж (картинка)
 const playerImg = new Image();
-playerImg.src = 'photo1.jpg'; 
+playerImg.src = 'photo1.jpg'; // Твой Амонгус
 
 const player = {
-    x: 50, y: 300, width: 40, height: 40,
-    dx: 0, dy: 0, speed: 5, jumpPower: -12,
+    x: 50, y: 100, 
+    width: 60, height: 60, // Можно чуть увеличить размер
+    dx: 0, dy: 0, 
+    speed: 7, jumpPower: -15,
     grounded: false
 };
 
-const gravity = 0.6;
+const gravity = 0.8;
 const keys = {};
+
+// Генерируем платформы в зависимости от размера экрана
 const platforms = [
-    {x: 0, y: 380, w: 800, h: 20},  // Пол
-    {x: 200, y: 300, w: 150, h: 20}, // Платформа 1
-    {x: 450, y: 220, w: 150, h: 20}, // Платформа 2
-    {x: 650, y: 320, w: 100, h: 20}  // Платформа 3
+    {x: 0, y: canvas.height - 40, w: 5000, h: 40}, // Длинный пол
+    {x: 300, y: canvas.height - 200, w: 200, h: 30},
+    {x: 600, y: canvas.height - 350, w: 200, h: 30},
+    {x: 900, y: canvas.height - 250, w: 200, h: 30},
+    {x: 1200, y: canvas.height - 400, w: 250, h: 30}
 ];
 
 function update() {
-    // Управление
     if (keys['ArrowLeft']) player.dx = -player.speed;
     else if (keys['ArrowRight']) player.dx = player.speed;
-    else player.dx = 0;
+    else player.dx *= 0.8; // Плавная остановка
 
     if (keys['ArrowUp'] && player.grounded) {
         player.dy = player.jumpPower;
         player.grounded = false;
     }
 
-    // Физика
     player.dy += gravity;
     player.x += player.dx;
     player.y += player.dy;
     player.grounded = false;
 
-    // Столкновения с платформами
+    // Столкновения
     platforms.forEach(p => {
         if (player.x < p.x + p.w && player.x + player.width > p.x &&
-            player.y + player.height > p.y && player.y + player.height < p.y + p.h + 10 && player.dy >= 0) {
+            player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
             player.y = p.y - player.height;
             player.dy = 0;
             player.grounded = true;
         }
     });
 
+    // Ограничение по границам экрана (чтобы не улетал влево)
+    if (player.x < 0) player.x = 0;
+
     // Отрисовка
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // Рисуем платформы
-    ctx.fillStyle = '#8B4513';
-    platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
+    ctx.fillStyle = '#5C4033';
+    platforms.forEach(p => {
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+    });
 
-    // Рисуем персонажа (твою фотку)
+    // Рисуем Амонгуса
     ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
 
     requestAnimationFrame(update);
@@ -81,7 +97,7 @@ function update() {
 window.addEventListener('keydown', e => keys[e.code] = true);
 window.addEventListener('keyup', e => keys[e.code] = false);
 
-playerImg.onload = update; // Запуск, когда картинка загрузится
+playerImg.onload = update;
 </script>
 </body>
 </html>
