@@ -60,14 +60,15 @@ const CONFIG = {
 let state = {
     distance: 0, coins: 0, hp: CONFIG.hpMax,
     highScore: localStorage.getItem('highScore') || 0,
-    invulnerable: 0, cameraX: 0, gameActive: false
+    invulnerable: 0, cameraX: 0, gameActive: false,
+    coinAnimTimer: 0 // Таймер для анимации вращения монет
 };
 
 const playerImg = new Image();
-playerImg.src = 'Photo1.jpg'; // Вернули правильное имя
+playerImg.src = 'Photo1.jpg'; 
 
 const player = { x: 50, y: 100, width: 55, height: 55, dx: 0, dy: 0, grounded: false };
-let platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal'}];
+let platforms = [];
 let coins = [];
 let meteors = [];
 let stars = [];
@@ -79,13 +80,11 @@ function startGame() {
     document.getElementById('menu').style.display = 'none';
     document.getElementById('scoreBoard').style.display = 'block';
     
-    // ВОТ ЭТА СТРОЧКА ВКЛЮЧАЕТ МУЗЫКУ
     document.getElementById('bgMusic').play().catch(() => console.log("Музыка не найдена"));
     
     state.gameActive = true;
     resetGame();
 }
-
 
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
@@ -103,14 +102,30 @@ window.addEventListener('resize', resize);
 resize();
 
 function generateWorld() {
+    // Если платформ совсем нет (старт игры), создаем базовую
+    if (platforms.length === 0) {
+        platforms.push({x: 0, y: canvas.height / 2 + 100, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60});
+        return;
+    }
+
     const lastP = platforms[platforms.length - 1];
     if (player.x > lastP.x - 1200) {
-        const newX = lastP.x + lastP.w + Math.random() * 140 + 70;
+        // Усложнение: чем больше дистанция, тем больше может быть максимальный разрыв между платформами
+        const maxGap = Math.min(220, 140 + (state.distance / 150));
+        const newX = lastP.x + lastP.w + Math.random() * maxGap + 70;
+        
         const newY = Math.max(150, Math.min(canvas.height - 150, lastP.y + (Math.random() * 260 - 130)));
         let type = Math.random() > 0.88 ? 'trap' : (Math.random() > 0.8 ? 'jump' : 'normal');
+        
         platforms.push({x: newX, y: newY, w: Math.random()*150+90, h: 25, type, isTouched: false, timer: 60});
+        
         if (Math.random() > 0.4 && type === 'normal') coins.push({x: newX + 50, y: newY - 45, collected: false});
-        if (Math.random() > 0.6) meteors.push({x: player.x + canvas.width + 400, y: Math.random()*canvas.height, size: 20, speed: 5 + (state.distance/20000)});
+        
+        // Усложнение: скорость метеоритов плавно растет с дистанцией
+        if (Math.random() > 0.6) {
+            let meteorSpeed = 5 + (state.distance / 3000);
+            meteors.push({x: player.x + canvas.width + 400, y: Math.random()*canvas.height, size: 20, speed: meteorSpeed});
+        }
     }
     if (platforms.length > 30) platforms.shift();
 }
@@ -128,6 +143,9 @@ function update() {
     player.y += player.dy;
     player.grounded = false;
 
+    // Таймер для красивого вращения монеток
+    state.coinAnimTimer += 0.05;
+
     platforms.forEach((p, i) => {
         if (player.x < p.x + p.w && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
             player.y = p.y - player.height;
@@ -135,7 +153,10 @@ function update() {
             player.grounded = true;
             if (p.type === 'trap') p.isTouched = true;
         }
-        if (p.isTouched) { p.timer--; if (p.timer <= 0) platforms.splice(i, 1); }
+        if (p.isTouched) { 
+            p.timer--; 
+            if (p.timer <= 0) platforms.splice(i, 1); 
+        }
     });
 
     coins.forEach(c => {
@@ -189,7 +210,16 @@ function draw() {
     // Платформы
     platforms.forEach(p => {
         ctx.shadowBlur = 15;
-        if (p.type === 'trap') { ctx.fillStyle = p.isTouched ? '#f33' : '#800'; ctx.shadowColor = '#f00'; }
+        if (p.type === 'trap') { 
+            // Эффект мигания перед исчезновением
+            if (p.isTouched && p.timer % 10 < 5) {
+                ctx.fillStyle = '#ff6666'; 
+                ctx.shadowColor = '#ff3333';
+            } else {
+                ctx.fillStyle = p.isTouched ? '#f33' : '#800'; 
+                ctx.shadowColor = '#f00'; 
+            }
+        }
         else if (p.type === 'jump') { ctx.fillStyle = '#0f0'; ctx.shadowColor = '#0f0'; }
         else { ctx.fillStyle = '#444'; ctx.shadowColor = '#0ff'; }
         ctx.fillRect(p.x, p.y, p.w, p.h);
@@ -201,12 +231,21 @@ function draw() {
     ctx.fillStyle = '#A0522D';
     meteors.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); });
 
-    // Монеты
+    // Монеты с анимацией вращения (изменение ширины по синусу)
     ctx.fillStyle = '#FFD700';
     coins.forEach(c => { 
         if(!c.collected) { 
-            ctx.beginPath(); ctx.arc(c.x, c.y, 14, 0, Math.PI*2); ctx.fill(); 
-            ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.save();
+            ctx.translate(c.x, c.y);
+            // Плавное сжатие по горизонтали создает 3D-эффект вращения
+            ctx.scale(Math.abs(Math.sin(state.coinAnimTimer)), 1); 
+            ctx.beginPath(); 
+            ctx.arc(0, 0, 14, 0, Math.PI*2); 
+            ctx.fill(); 
+            ctx.strokeStyle = '#DAA520'; 
+            ctx.lineWidth = 2; 
+            ctx.stroke();
+            ctx.restore();
         } 
     });
 
@@ -219,12 +258,21 @@ function draw() {
 }
 
 function resetGame() {
-    state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
-    player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
-    platforms = [{x: 0, y: 500, w: 400, h: 40, type: 'normal'}];
-    coins = []; meteors = [];
+    state.hp = CONFIG.hpMax; 
+    state.distance = 0; 
+    state.coins = 0; 
+    state.invulnerable = 0;
+    player.x = 50; 
+    player.y = 100; 
+    player.dx = 0; 
+    player.dy = 0;
+    platforms = [];
+    coins = [];
+    meteors = [];
+    generateWorld(); // Создаем первую платформу заново
 }
 
+// Запускаем игровой цикл после полной загрузки страницы
 update();
 </script>
 </body>
