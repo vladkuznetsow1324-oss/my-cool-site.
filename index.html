@@ -4,17 +4,16 @@
     <meta charset="UTF-8">
     <title>Among Us: Space Platformer</title>
     
-    <!-- [БЛОК 1: РЕСУРСЫ И ИКОНКИ] -->
+    <!-- [РЕСУРСЫ] -->
     <link rel="icon" href="Photo1.jpg" type="image/x-icon">
     <audio id="bgMusic" loop>
         <source src="music.mp3" type="audio/mpeg">
     </audio>
 
-    <!-- [БЛОК 2: СТИЛИ И ИНТЕРФЕЙС (CSS)] -->
+    <!-- [СТИЛИ] -->
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
-        canvas { display: block; background: #050510; }
-        
+        canvas { display: block; }
         #menu {
             position: absolute; width: 100%; height: 100%;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -27,7 +26,6 @@
             transition: 0.3s; font-family: inherit;
         }
         #menu button:hover { background: #00ff00; color: #000; box-shadow: 0 0 30px #00ff00; }
-
         .ui { 
             position: absolute; top: 15px; left: 15px; 
             color: #00ff00; font-size: 20px; pointer-events: none;
@@ -37,7 +35,6 @@
 </head>
 <body>
 
-    <!-- [БЛОК 3: HTML СТРУКТУРА] -->
     <div id="menu">
         <h1>AMONG US: SPACE PLATFORMER</h1>
         <p>Автор игры: GUEST_VLADOS2011</p>
@@ -50,51 +47,43 @@
     
     <canvas id="gameCanvas"></canvas>
 
-    <!-- [БЛОК 4: ИГРОВОЙ ДВИЖОК (JAVASCRIPT)] -->
     <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    // === ПОДБЛОК: НАСТРОЙКИ И ПЕРЕМЕННЫЕ ===
+    // === НАСТРОЙКИ И ПЕРЕМЕННЫЕ ===
     const CONFIG = {
-        playerSpeed: 7, 
-        jumpPower: -16, 
-        gravity: 0.8, 
-        hpMax: 3, 
-        shopPrice: 10
+        playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10
     };
 
     let state = {
-        distance: 0, 
-        coins: 0, 
-        hp: CONFIG.hpMax,
+        distance: 0, coins: 0, hp: CONFIG.hpMax,
         highScore: localStorage.getItem('highScore') || 0,
-        invulnerable: 0, 
-        cameraX: 0, 
-        gameActive: false,
-        coinAnimTimer: 0 
+        invulnerable: 0, cameraX: 0, gameActive: false,
+        coinAnimTimer: 0, bgOffset: 0
     };
 
-    const playerImg = new Image();
-    playerImg.src = 'Photo1.jpg'; 
+    const playerImg = new Image(); playerImg.src = 'Photo1.jpg'; 
+    const coinImg = new Image(); coinImg.src = 'coin.png';
+    const meteorImg = new Image(); meteorImg.src = 'meteor.png';
 
     const player = { x: 50, y: 100, width: 55, height: 55, dx: 0, dy: 0, grounded: false };
-    let platforms = [];
-    let coins = [];
-    let meteors = [];
-    let stars = [];
+    let platforms = []; let coins = []; let meteors = []; let stars = [];
     const keys = {};
 
-    // Создание звездного неба
     for(let i=0; i<120; i++) {
-        stars.push({x: Math.random()*2000, y: Math.random()*1000, s: Math.random()*2.5});
+        stars.push({
+            x: Math.random() * 2000, y: Math.random() * 1000, s: Math.random() * 2.5,
+            alpha: Math.random(), twinkleSpeed: 0.01 + Math.random() * 0.03
+        });
     }
 
-    // === ПОДБЛОК: СИСТЕМНЫЕ ФУНКЦИИ И СЛУШАТЕЛИ ===
+    // === СИСТЕМНЫЕ ФУНКЦИИ ===
     function startGame() {
         document.getElementById('menu').style.display = 'none';
         document.getElementById('scoreBoard').style.display = 'block';
-        document.getElementById('bgMusic').play().catch(() => console.log("Музыка не найдена"));
+        const music = document.getElementById('bgMusic');
+        if (music) music.play().catch(e => console.log("Музыка ждет клика:", e));
         state.gameActive = true;
         resetGame();
     }
@@ -108,13 +97,12 @@
     window.addEventListener('keyup', e => keys[e.code] = false);
 
     function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
     }
     window.addEventListener('resize', resize);
     resize();
 
-    // === ПОДБЛОК: ГЕНЕРАЦИЯ МИРА ===
+    // === ГЕНЕРАЦИЯ МИРА ===
     function generateWorld() {
         if (platforms.length === 0) {
             platforms.push({x: 0, y: canvas.height / 2 + 100, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60});
@@ -123,7 +111,6 @@
 
         const lastP = platforms[platforms.length - 1];
         if (player.x > lastP.x - 1200) {
-            // Динамическое усложнение: увеличиваем пропасти с ростом дистанции
             const maxGap = Math.min(220, 140 + (state.distance / 150));
             const newX = lastP.x + lastP.w + Math.random() * maxGap + 70;
             const newY = Math.max(150, Math.min(canvas.height - 150, lastP.y + (Math.random() * 260 - 130)));
@@ -135,16 +122,14 @@
                 coins.push({x: newX + 50, y: newY - 45, collected: false});
             }
             
-            // Динамическое усложнение: метеориты летят быстрее
             if (Math.random() > 0.6) {
                 let meteorSpeed = 5 + (state.distance / 3000);
-                meteors.push({x: player.x + canvas.width + 400, y: Math.random()*canvas.height, size: 20, speed: meteorSpeed});
+                meteors.push({x: player.x + canvas.width + 400, y: Math.random()*canvas.height, size: 24, speed: meteorSpeed});
             }
         }
         if (platforms.length > 30) platforms.shift();
     }
-
-    // === ПОДБЛОК: ЛОГИКА (ТИК ДВИЖКА) ===
+    // === ПОДБЛОК: ЛОГИКА (ОБНОВЛЕНИЕ КАДРА) ===
     function update() {
         if (!state.gameActive) { draw(); requestAnimationFrame(update); return; }
 
@@ -158,7 +143,14 @@
         player.y += player.dy;
         player.grounded = false;
 
-        state.coinAnimTimer += 0.05; // Скорость анимации монет
+        state.coinAnimTimer += 0.05;
+        state.bgOffset += 0.2;
+
+        // Мерцание звезд
+        stars.forEach(s => {
+            s.alpha += s.twinkleSpeed;
+            if (s.alpha > 1 || s.alpha < 0.2) s.twinkleSpeed = -s.twinkleSpeed;
+        });
 
         // Обработка платформ
         platforms.forEach((p, i) => {
@@ -194,7 +186,7 @@
 
         if (player.y > canvas.height + 400) resetGame();
         
-        // Рекорды
+        // Рекорды и камера
         state.distance = Math.max(state.distance, Math.floor(player.x));
         if (state.distance > state.highScore) {
             state.highScore = state.distance;
@@ -202,7 +194,6 @@
         }
         state.cameraX = player.x - canvas.width / 4;
         
-        // Обновление UI текста
         document.getElementById('scoreBoard').innerHTML = 
             `HP: ${state.hp} | Монеты: ${state.coins} | Рекорд: ${state.highScore}<br>Дистанция: ${state.distance}<br>` +
             `<span style="color:#ff0">Жми 'B' - купить HP (10 монет)</span>`;
@@ -214,20 +205,26 @@
 
     // === ПОДБЛОК: ОТРИСОВКА (ГРАФИКА) ===
     function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Космический живой градиент
+        let gradient = ctx.createLinearGradient(0, -state.bgOffset % canvas.height, 0, canvas.height + (-state.bgOffset % canvas.height));
+        gradient.addColorStop(0, '#050515');
+        gradient.addColorStop(0.5, '#150828');
+        gradient.addColorStop(1, '#050515');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Отрисовка звезд
-        ctx.fillStyle = "#fff";
+        // Звезды
         stars.forEach(s => {
             let sx = (s.x - state.cameraX * 0.2) % canvas.width;
             if (sx < 0) sx += canvas.width;
+            ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
             ctx.fillRect(sx, s.y, s.s, s.s);
         });
 
         ctx.save();
         ctx.translate(-state.cameraX, 0);
 
-        // Отрисовка платформ
+        // Платформы
         platforms.forEach(p => {
             ctx.shadowBlur = 15;
             if (p.type === 'trap') { 
@@ -244,24 +241,37 @@
             ctx.strokeStyle = '#fff'; ctx.strokeRect(p.x, p.y, p.w, p.h);
         });
 
-        // Отрисовка метеоритов
-        ctx.fillStyle = '#A0522D';
-        meteors.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); });
+        // Метеориты
+        meteors.forEach(m => { 
+            if (meteorImg.complete && meteorImg.width > 0) {
+                ctx.drawImage(meteorImg, m.x - m.size, m.y - m.size, m.size * 2, m.size * 2);
+            } else {
+                ctx.save();
+                ctx.shadowBlur = 20; ctx.shadowColor = '#ff4500';
+                ctx.fillStyle = '#A0522D';
+                ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+            }
+        });
 
-        // Отрисовка монет с вращением
-        ctx.fillStyle = '#FFD700';
+        // Монеты
         coins.forEach(c => { 
             if(!c.collected) { 
                 ctx.save();
                 ctx.translate(c.x, c.y);
                 ctx.scale(Math.abs(Math.sin(state.coinAnimTimer)), 1); 
-                ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI*2); ctx.fill(); 
-                ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 2; ctx.stroke();
+                if (coinImg.complete && coinImg.width > 0) {
+                    ctx.drawImage(coinImg, -14, -14, 28, 28);
+                } else {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI*2); ctx.fill(); 
+                    ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 2; ctx.stroke();
+                }
                 ctx.restore();
             } 
         });
 
-        // Отрисовка спрайта игрока
+        // Игрок
         if (state.invulnerable % 10 < 5) {
             if (playerImg.complete && playerImg.width > 0) {
                 ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
@@ -274,16 +284,12 @@
 
     // === ПОДБЛОК: ПЕРЕЗАПУСК ===
     function resetGame() {
-        state.hp = CONFIG.hpMax; 
-        state.distance = 0; 
-        state.coins = 0; 
-        state.invulnerable = 0;
+        state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
         player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
         platforms = []; coins = []; meteors = [];
         generateWorld(); 
     }
 
-    // Точка запуска игры
     update();
     </script>
 </body>
