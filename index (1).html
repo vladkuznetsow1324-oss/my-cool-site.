@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Among Us: Space Platformer</title>
+    
+    <!-- [БЛОК 1: РЕСУРСЫ И ИКОНКИ] -->
+    <link rel="icon" href="Photo1.jpg" type="image/x-icon">
+    <audio id="bgMusic" loop>
+        <source src="music.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- [БЛОК 2: СТИЛИ И ИНТЕРФЕЙС (CSS)] -->
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+        canvas { display: block; background: #050510; }
+        
+        #menu {
+            position: absolute; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(0, 0, 0, 0.8); z-index: 100; color: #00ff00;
+        }
+        #menu h1 { font-size: 50px; margin-bottom: 20px; text-shadow: 0 0 20px #00ff00; }
+        #menu button {
+            padding: 15px 40px; font-size: 24px; cursor: pointer;
+            background: transparent; border: 2px solid #00ff00; color: #00ff00;
+            transition: 0.3s; font-family: inherit;
+        }
+        #menu button:hover { background: #00ff00; color: #000; box-shadow: 0 0 30px #00ff00; }
+
+        .ui { 
+            position: absolute; top: 15px; left: 15px; 
+            color: #00ff00; font-size: 20px; pointer-events: none;
+            text-shadow: 2px 2px 4px #000;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- [БЛОК 3: HTML СТРУКТУРА] -->
+    <div id="menu">
+        <h1>AMONG US: SPACE PLATFORMER</h1>
+        <p>Автор игры: GUEST_VLADOS2011</p>
+        <button onclick="startGame()">НАЧАТЬ ИГРУ</button>
+    </div>
+
+    <div class="ui" id="scoreBoard" style="display: none;">
+        HP: 3 | Монеты: 0 | Рекорд: 0<br>Дистанция: 0
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- [БЛОК 4: ИГРОВОЙ ДВИЖОК (JAVASCRIPT)] -->
+    <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // === ПОДБЛОК: НАСТРОЙКИ И ПЕРЕМЕННЫЕ ===
+    const CONFIG = {
+        playerSpeed: 7, 
+        jumpPower: -16, 
+        gravity: 0.8, 
+        hpMax: 3, 
+        shopPrice: 10
+    };
+
+    let state = {
+        distance: 0, 
+        coins: 0, 
+        hp: CONFIG.hpMax,
+        highScore: localStorage.getItem('highScore') || 0,
+        invulnerable: 0, 
+        cameraX: 0, 
+        gameActive: false,
+        coinAnimTimer: 0 
+    };
+
+    const playerImg = new Image();
+    playerImg.src = 'Photo1.jpg'; 
+
+    const player = { x: 50, y: 100, width: 55, height: 55, dx: 0, dy: 0, grounded: false };
+    let platforms = [];
+    let coins = [];
+    let meteors = [];
+    let stars = [];
+    const keys = {};
+
+    // Создание звездного неба
+    for(let i=0; i<120; i++) {
+        stars.push({x: Math.random()*2000, y: Math.random()*1000, s: Math.random()*2.5});
+    }
+
+    // === ПОДБЛОК: СИСТЕМНЫЕ ФУНКЦИИ И СЛУШАТЕЛИ ===
+    function startGame() {
+        document.getElementById('menu').style.display = 'none';
+        document.getElementById('scoreBoard').style.display = 'block';
+        document.getElementById('bgMusic').play().catch(() => console.log("Музыка не найдена"));
+        state.gameActive = true;
+        resetGame();
+    }
+
+    window.addEventListener('keydown', e => {
+        keys[e.code] = true;
+        if (e.code === 'KeyB' && state.coins >= CONFIG.shopPrice) {
+            state.coins -= CONFIG.shopPrice; state.hp++;
+        }
+    });
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // === ПОДБЛОК: ГЕНЕРАЦИЯ МИРА ===
+    function generateWorld() {
+        if (platforms.length === 0) {
+            platforms.push({x: 0, y: canvas.height / 2 + 100, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60});
+            return;
+        }
+
+        const lastP = platforms[platforms.length - 1];
+        if (player.x > lastP.x - 1200) {
+            // Динамическое усложнение: увеличиваем пропасти с ростом дистанции
+            const maxGap = Math.min(220, 140 + (state.distance / 150));
+            const newX = lastP.x + lastP.w + Math.random() * maxGap + 70;
+            const newY = Math.max(150, Math.min(canvas.height - 150, lastP.y + (Math.random() * 260 - 130)));
+            let type = Math.random() > 0.88 ? 'trap' : (Math.random() > 0.8 ? 'jump' : 'normal');
+            
+            platforms.push({x: newX, y: newY, w: Math.random()*150+90, h: 25, type, isTouched: false, timer: 60});
+            
+            if (Math.random() > 0.4 && type === 'normal') {
+                coins.push({x: newX + 50, y: newY - 45, collected: false});
+            }
+            
+            // Динамическое усложнение: метеориты летят быстрее
+            if (Math.random() > 0.6) {
+                let meteorSpeed = 5 + (state.distance / 3000);
+                meteors.push({x: player.x + canvas.width + 400, y: Math.random()*canvas.height, size: 20, speed: meteorSpeed});
+            }
+        }
+        if (platforms.length > 30) platforms.shift();
+    }
+
+    // === ПОДБЛОК: ЛОГИКА (ТИК ДВИЖКА) ===
+    function update() {
+        if (!state.gameActive) { draw(); requestAnimationFrame(update); return; }
+
+        if (keys['ArrowLeft']) player.dx = -CONFIG.playerSpeed;
+        else if (keys['ArrowRight']) player.dx = CONFIG.playerSpeed;
+        else player.dx *= 0.8;
+        if (keys['ArrowUp'] && player.grounded) { player.dy = CONFIG.jumpPower; player.grounded = false; }
+
+        player.dy += CONFIG.gravity;
+        player.x += player.dx;
+        player.y += player.dy;
+        player.grounded = false;
+
+        state.coinAnimTimer += 0.05; // Скорость анимации монет
+
+        // Обработка платформ
+        platforms.forEach((p, i) => {
+            if (player.x < p.x + p.w && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
+                player.y = p.y - player.height;
+                player.dy = p.type === 'jump' ? CONFIG.jumpPower * 1.5 : 0;
+                player.grounded = true;
+                if (p.type === 'trap') p.isTouched = true;
+            }
+            if (p.isTouched) { 
+                p.timer--; 
+                if (p.timer <= 0) platforms.splice(i, 1); 
+            }
+        });
+
+        // Сбор монет
+        coins.forEach(c => {
+            if (!c.collected && player.x < c.x + 25 && player.x + player.width > c.x - 25 && player.y < c.y + 25 && player.y + player.height > c.y - 25) {
+                c.collected = true; state.coins++;
+            }
+        });
+
+        // Столкновение с метеоритами
+        if (state.invulnerable > 0) state.invulnerable--;
+        meteors.forEach((m, i) => {
+            m.x -= m.speed;
+            let dist = Math.sqrt(Math.pow((player.x+25)-m.x, 2) + Math.pow((player.y+25)-m.y, 2));
+            if (dist < m.size + 15 && state.invulnerable <= 0) {
+                state.hp--; state.invulnerable = 60; meteors.splice(i, 1);
+                if (state.hp <= 0) resetGame();
+            }
+        });
+
+        if (player.y > canvas.height + 400) resetGame();
+        
+        // Рекорды
+        state.distance = Math.max(state.distance, Math.floor(player.x));
+        if (state.distance > state.highScore) {
+            state.highScore = state.distance;
+            localStorage.setItem('highScore', state.highScore);
+        }
+        state.cameraX = player.x - canvas.width / 4;
+        
+        // Обновление UI текста
+        document.getElementById('scoreBoard').innerHTML = 
+            `HP: ${state.hp} | Монеты: ${state.coins} | Рекорд: ${state.highScore}<br>Дистанция: ${state.distance}<br>` +
+            `<span style="color:#ff0">Жми 'B' - купить HP (10 монет)</span>`;
+
+        generateWorld();
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    // === ПОДБЛОК: ОТРИСОВКА (ГРАФИКА) ===
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Отрисовка звезд
+        ctx.fillStyle = "#fff";
+        stars.forEach(s => {
+            let sx = (s.x - state.cameraX * 0.2) % canvas.width;
+            if (sx < 0) sx += canvas.width;
+            ctx.fillRect(sx, s.y, s.s, s.s);
+        });
+
+        ctx.save();
+        ctx.translate(-state.cameraX, 0);
+
+        // Отрисовка платформ
+        platforms.forEach(p => {
+            ctx.shadowBlur = 15;
+            if (p.type === 'trap') { 
+                if (p.isTouched && p.timer % 10 < 5) {
+                    ctx.fillStyle = '#ff6666'; ctx.shadowColor = '#ff3333';
+                } else {
+                    ctx.fillStyle = p.isTouched ? '#f33' : '#800'; ctx.shadowColor = '#f00'; 
+                }
+            }
+            else if (p.type === 'jump') { ctx.fillStyle = '#0f0'; ctx.shadowColor = '#0f0'; }
+            else { ctx.fillStyle = '#444'; ctx.shadowColor = '#0ff'; }
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#fff'; ctx.strokeRect(p.x, p.y, p.w, p.h);
+        });
+
+        // Отрисовка метеоритов
+        ctx.fillStyle = '#A0522D';
+        meteors.forEach(m => { ctx.beginPath(); ctx.arc(m.x, m.y, m.size, 0, Math.PI*2); ctx.fill(); });
+
+        // Отрисовка монет с вращением
+        ctx.fillStyle = '#FFD700';
+        coins.forEach(c => { 
+            if(!c.collected) { 
+                ctx.save();
+                ctx.translate(c.x, c.y);
+                ctx.scale(Math.abs(Math.sin(state.coinAnimTimer)), 1); 
+                ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI*2); ctx.fill(); 
+                ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 2; ctx.stroke();
+                ctx.restore();
+            } 
+        });
+
+        // Отрисовка спрайта игрока
+        if (state.invulnerable % 10 < 5) {
+            if (playerImg.complete && playerImg.width > 0) {
+                ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+            } else { 
+                ctx.fillStyle = "red"; ctx.fillRect(player.x, player.y, player.width, player.height); 
+            }
+        }
+        ctx.restore();
+    }
+
+    // === ПОДБЛОК: ПЕРЕЗАПУСК ===
+    function resetGame() {
+        state.hp = CONFIG.hpMax; 
+        state.distance = 0; 
+        state.coins = 0; 
+        state.invulnerable = 0;
+        player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
+        platforms = []; coins = []; meteors = [];
+        generateWorld(); 
+    }
+
+    // Точка запуска игры
+    update();
+    </script>
+</body>
+</html>
