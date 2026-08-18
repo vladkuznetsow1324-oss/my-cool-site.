@@ -17,7 +17,6 @@
     <audio id="sndHit"><source src="hit.mp3" type="audio/mpeg"></audio>
     <audio id="sndDeath"><source src="death.mp3" type="audio/mpeg"></audio>
     <audio id="sndLand"><source src="land.mp3" type="audio/mpeg"></audio>
-    <!-- Добавление: Новый звук спавна переносной белой плиты -->
     <audio id="sndSpawn"><source src="spawn_platform.mp3" type="audio/mpeg"></audio>
 
     <!-- [СТИЛИ] -->
@@ -110,42 +109,38 @@
         resetGame();
     }
 
-    // Слушатель нажатий кнопок
     window.addEventListener('keydown', e => {
-        // Исключаем S и Стрелочку Вниз из клавиш перемещения персонажа, чтобы не тормозить бег
         if (e.code !== 'KeyS' && e.code !== 'ArrowDown') {
             keys[e.code] = true;
         }
         
-        // Магазин: Купить ХП на кнопку V
         if (e.code === 'KeyV' && state.coins >= CONFIG.shopPrice) {
             state.coins -= CONFIG.shopPrice; state.hp++;
             playSnd('sndBuy');
         }
 
-        // Магазин: Купить платформу-сейв в инвентарь на кнопку E
         if (e.code === 'KeyE' && state.coins >= CONFIG.platformPrice) {
             state.coins -= CONFIG.platformPrice;
             state.savedPlatformsCount++;
             playSnd('sndBuy');
         }
 
-        // Геймплей: Спавн белой платформы под ногами на S или Стрелочку Вниз
         if ((e.code === 'KeyS' || e.code === 'ArrowDown') && state.savedPlatformsCount > 0) {
             state.savedPlatformsCount--; 
             
             platforms.push({
                 x: player.x - 50, 
-                y: player.y + player.height, 
+                // Изменение: опустили координату Y чуть ниже (на 20px под ноги), чтобы Амогус при спавне в падении гарантированно приземлялся сверху, а не проваливался сквозь неё
+                y: player.y + player.height + 20, 
                 w: 160, 
                 h: 25, 
                 type: 'custom_white', 
                 isTouched: false, 
-                timer: 900, // Живёт 15 секунд
+                timer: 900, 
                 scaleY: 1, 
                 targetScaleY: 1
             });
-            playSnd('sndSpawn'); // Запуск специального звука спавна плиты!
+            playSnd('sndSpawn'); 
         }
     });
     
@@ -208,7 +203,16 @@
                 });
             }
         }
-        if (platforms.length > 40) platforms.shift();
+        
+        // ИСПРАВЛЕНИЕ: сборщик мусора теперь удаляет старую плиту ТОЛЬКО если это не ваша белая переносная платформа!
+        if (platforms.length > 45) {
+            if (platforms[0].type !== 'custom_white') {
+                platforms.shift();
+            } else {
+                // Если самая старая плита оказалась белой, удаляем следующую за ней обычную, чтобы ничего не ломалось
+                platforms.splice(1, 1);
+            }
+        }
     }
     // === ПОДБЛОК: ЛОГИКА (ОБНОВЛЕНИЕ КАДРА) ===
     function update() {
