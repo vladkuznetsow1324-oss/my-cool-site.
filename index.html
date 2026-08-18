@@ -6,29 +6,41 @@
     
     <!-- [РЕСУРСЫ] -->
     <link rel="icon" href="Photo1.jpg" type="image/x-icon">
-    <audio id="bgMusic" loop>
-        <source src="music.mp3" type="audio/mpeg">
-    </audio>
+    <audio id="bgMusic" loop><source src="music.mp3" type="audio/mpeg"></audio>
+    
+    <!-- Изменение 4: Добавление аудио-тегов для всех новых звуков игры -->
+    <audio id="sndCoin"><source src="coin.mp3" type="audio/mpeg"></audio>
+    <audio id="sndJump"><source src="jump.mp3" type="audio/mpeg"></audio>
+    <audio id="sndTrampoline"><source src="trampoline.mp3" type="audio/mpeg"></audio>
+    <audio id="sndTrap"><source src="trap_activate.mp3" type="audio/mpeg"></audio>
+    <audio id="sndWalk" loop><source src="walk.mp3" type="audio/mpeg"></audio>
+    <audio id="sndBuy"><source src="buy.mp3" type="audio/mpeg"></audio>
+    <audio id="sndHit"><source src="hit.mp3" type="audio/mpeg"></audio>
+    <audio id="sndDeath"><source src="death.mp3" type="audio/mpeg"></audio>
 
     <!-- [СТИЛИ] -->
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
         canvas { display: block; }
+        
+        /* Изменение 1: Перекрасили главное меню в стильный неоновый фиолетовый цвет */
         #menu {
             position: absolute; width: 100%; height: 100%;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
-            background: rgba(0, 0, 0, 0.8); z-index: 100; color: #00ff00;
+            background: rgba(0, 0, 0, 0.85); z-index: 100; color: #da70d6;
         }
-        #menu h1 { font-size: 50px; margin-bottom: 20px; text-shadow: 0 0 20px #00ff00; }
+        #menu h1 { font-size: 50px; margin-bottom: 20px; text-shadow: 0 0 20px #8a2be2; color: #ba55d3; }
+        #menu p { color: #da70d6; text-shadow: 0 0 5px #8a2be2; }
         #menu button {
             padding: 15px 40px; font-size: 24px; cursor: pointer;
-            background: transparent; border: 2px solid #00ff00; color: #00ff00;
-            transition: 0.3s; font-family: inherit;
+            background: transparent; border: 2px solid #da70d6; color: #da70d6;
+            transition: 0.3s; font-family: inherit; box-shadow: 0 0 10px rgba(138, 43, 226, 0.3);
         }
-        #menu button:hover { background: #00ff00; color: #000; box-shadow: 0 0 30px #00ff00; }
+        #menu button:hover { background: #da70d6; color: #000; box-shadow: 0 0 30px #da70d6; }
+        
         .ui { 
             position: absolute; top: 15px; left: 15px; 
-            color: #00ff00; font-size: 20px; pointer-events: none;
+            color: #da70d6; font-size: 20px; pointer-events: none;
             text-shadow: 2px 2px 4px #000;
         }
     </style>
@@ -37,7 +49,6 @@
 
     <div id="menu">
         <h1>AMONG US: SPACE PLATFORMER</h1>
-        <!-- Изменение 4: Новый ник автора -->
         <p>Автор игры: VLDS_HLDS</p>
         <button onclick="startGame()">НАЧАТЬ ИГРУ</button>
     </div>
@@ -52,7 +63,6 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    // === НАСТРОЙКИ И ПЕРЕМЕННЫЕ ===
     const CONFIG = {
         playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10
     };
@@ -68,9 +78,13 @@
     const coinImg = new Image(); coinImg.src = 'coin.png';
     const meteorImg = new Image(); meteorImg.src = 'meteor.png';
 
-    const player = { x: 50, y: 100, width: 55, height: 55, dx: 0, dy: 0, grounded: false };
-    let platforms = []; let coins = []; let meteors = []; let stars = [];
-    let particles = []; // Массив для огненных хвостов метеоритов
+    // Изменение 3: Добавили параметры наклона (angle) и вращения кувырка (flipAngle, isFlipping) для Амогуса
+    const player = { 
+        x: 50, y: 100, width: 55, height: 55, dx: 0, dy: 0, grounded: false,
+        angle: 0, flipAngle: 0, isFlipping: false 
+    };
+    
+    let platforms = []; let coins = []; let meteors = []; let stars = []; let particles = [];
     const keys = {};
 
     for(let i=0; i<120; i++) {
@@ -80,12 +94,17 @@
         });
     }
 
-    // === СИСТЕМНЫЕ ФУНКЦИИ ===
+    // Изменение 4: Функция для запуска звуков, которая делает их громче музыки (громкость 0.9)
+    function playSnd(id) {
+        const s = document.getElementById(id);
+        if (s) { s.currentTime = 0; s.volume = 0.9; s.play().catch(() => {}); }
+    }
+
     function startGame() {
         document.getElementById('menu').style.display = 'none';
         document.getElementById('scoreBoard').style.display = 'block';
         const music = document.getElementById('bgMusic');
-        if (music) music.play().catch(e => console.log("Музыка ждет клика:", e));
+        if (music) { music.volume = 0.4; music.play().catch(() => {}); } // Музыка чуть тише эффектов
         state.gameActive = true;
         resetGame();
     }
@@ -94,6 +113,7 @@
         keys[e.code] = true;
         if (e.code === 'KeyB' && state.coins >= CONFIG.shopPrice) {
             state.coins -= CONFIG.shopPrice; state.hp++;
+            playSnd('sndBuy'); // Звук покупки
         }
     });
     window.addEventListener('keyup', e => keys[e.code] = false);
@@ -107,7 +127,6 @@
     // === ГЕНЕРАЦИЯ МИРА ===
     function generateWorld() {
         if (platforms.length === 0) {
-            // Изменение 6: Добавили параметры scaleY для эффекта пружины батута
             platforms.push({x: 0, y: canvas.height / 2 + 100, w: 400, h: 40, type: 'normal', isTouched: false, timer: 60, scaleY: 1, targetScaleY: 1});
             return;
         }
@@ -117,25 +136,30 @@
             const maxGap = Math.min(220, 140 + (state.distance / 150));
             const newX = lastP.x + lastP.w + Math.random() * maxGap + 70;
             const newY = Math.max(150, Math.min(canvas.height - 150, lastP.y + (Math.random() * 260 - 130)));
-            let type = Math.random() > 0.88 ? 'trap' : (Math.random() > 0.8 ? 'jump' : 'normal');
+            
+            // Изменение 2: Добавлена новая бонусная плитка 'gold' с шансом появления
+            let rand = Math.random();
+            let type = rand > 0.90 ? 'trap' : (rand > 0.80 ? 'jump' : (rand > 0.72 ? 'gold' : 'normal'));
             
             platforms.push({
                 x: newX, y: newY, w: Math.random()*150+90, h: 25, type, 
-                isTouched: false, timer: 60,
-                scaleY: 1, targetScaleY: 1 // Переменные для анимации сжатия/батута
+                isTouched: false, timer: 60, scaleY: 1, targetScaleY: 1
             });
             
-            if (Math.random() > 0.4 && type === 'normal') {
+            // Изменение 2: Если сгенерировалась золотая плита, создаем на ней ровно 3 монетки в ряд
+            if (type === 'gold') {
+                coins.push({x: newX + 25, y: newY - 45, collected: false});
+                coins.push({x: newX + 65, y: newY - 45, collected: false});
+                coins.push({x: newX + 105, y: newY - 45, collected: false});
+            } else if (Math.random() > 0.4 && type === 'normal') {
                 coins.push({x: newX + 50, y: newY - 45, collected: false});
             }
             
-            // Изменение 2: Добавлен угол вращения (angle) и скорость вращения (rotSpeed) метеорита
             if (Math.random() > 0.6) {
                 let meteorSpeed = 5 + (state.distance / 3000);
                 meteors.push({
                     x: player.x + canvas.width + 400, y: Math.random()*canvas.height, 
-                    size: 24, speed: meteorSpeed, 
-                    angle: Math.random() * Math.PI * 2,
+                    size: 24, speed: meteorSpeed, angle: Math.random() * Math.PI * 2,
                     rotSpeed: (Math.random() * 0.05 + 0.02) * (Math.random() > 0.5 ? 1 : -1)
                 });
             }
@@ -146,18 +170,47 @@
     function update() {
         if (!state.gameActive) { draw(); requestAnimationFrame(update); return; }
 
-        // Изменение 5: Новая раскладка управления (Стрелочки + WASD + Пробел)
+        let moving = false;
+
+        // Изменение 3 & 4: Наклоны при движении влево/вправо и звук шагов
         if (keys['ArrowLeft'] || keys['KeyA']) {
             player.dx = -CONFIG.playerSpeed;
+            player.angle = -0.15; // Наклон влево
+            moving = true;
         } else if (keys['ArrowRight'] || keys['KeyD']) {
             player.dx = CONFIG.playerSpeed;
+            player.angle = 0.15; // Наклон вправо
+            moving = true;
         } else {
             player.dx *= 0.8;
+            player.angle *= 0.8; // Плавный возврат в вертикальное положение
         }
         
+        // Управление звуком хождения
+        const walkSnd = document.getElementById('sndWalk');
+        if (walkSnd) {
+            walkSnd.volume = 0.9;
+            if (moving && player.grounded) {
+                if (walkSnd.paused) walkSnd.play().catch(() => {});
+            } else {
+                if (!walkSnd.paused) walkSnd.pause();
+            }
+        }
+
+        // Обычный прыжок и звук
         if ((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) { 
             player.dy = CONFIG.jumpPower; 
             player.grounded = false; 
+            playSnd('sndJump');
+        }
+
+        // Изменение 3: Вращение кувырка в воздухе после батута
+        if (player.isFlipping) {
+            player.flipAngle += 0.2; // Скорость вращения сальто
+            if (player.flipAngle >= Math.PI * 2) {
+                player.flipAngle = 0;
+                player.isFlipping = false; // Закончили кувырок
+            }
         }
 
         player.dy += CONFIG.gravity;
@@ -174,7 +227,7 @@
             if (s.alpha > 1 || s.alpha < 0.2) s.twinkleSpeed = -s.twinkleSpeed;
         });
 
-        // Плавное возвращение платформ к исходной форме после сжатия (эффект резины)
+        // Пружинящие платформы
         platforms.forEach(p => {
             p.scaleY += (p.targetScaleY - p.scaleY) * 0.15;
             if (Math.abs(p.scaleY - p.targetScaleY) < 0.01) p.targetScaleY = 1;
@@ -185,17 +238,29 @@
             if (player.x < p.x + p.w && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
                 player.y = p.y - player.height;
                 
-                // Изменение 6: Зеленые плиты красиво пружинят при прыжке
                 if (p.type === 'jump') {
                     player.dy = CONFIG.jumpPower * 1.5;
-                    p.scaleY = 0.4; // Резко сжимаем плиту по вертикали
-                    p.targetScaleY = 1.3; // Заставляем её спружинить вверх
+                    p.scaleY = 0.4;
+                    p.targetScaleY = 1.3;
+                    
+                    // Изменение 3 & 4: Запуск сальто и звук батута
+                    player.isFlipping = true;
+                    player.flipAngle = 0;
+                    playSnd('sndTrampoline');
                 } else {
                     player.dy = 0;
+                    // Если приземлились, прерываем кувырок для безопасности
+                    player.isFlipping = false;
+                    player.flipAngle = 0;
                 }
                 
                 player.grounded = true;
-                if (p.type === 'trap') p.isTouched = true;
+                
+                // Изменение 4: Звук активации ловушки
+                if (p.type === 'trap' && !p.isTouched) {
+                    p.isTouched = true;
+                    playSnd('sndTrap');
+                }
             }
             if (p.isTouched) { 
                 p.timer--; 
@@ -203,52 +268,57 @@
             }
         });
 
-        // Сбор монет
+        // Сбор монет и звук
         coins.forEach(c => {
             if (!c.collected && player.x < c.x + 25 && player.x + player.width > c.x - 25 && player.y < c.y + 25 && player.y + player.height > c.y - 25) {
-                c.collected = true; state.coins++;
+                c.collected = true; 
+                state.coins++;
+                playSnd('sndCoin'); // Изменение 4: Звук подбора
             }
         });
 
-        // Изменение 2: Генерация красно-оранжевых частиц для хвоста метеоритов
+        // Частицы метеоритов
         meteors.forEach(m => {
             if (Math.random() > 0.3) {
                 particles.push({
-                    x: m.x + (Math.random() * 10 - 5),
-                    y: m.y + (Math.random() * 10 - 5),
-                    vx: m.speed * 0.5 + Math.random() * 2, // Летят назад
-                    vy: Math.random() * 2 - 1,
-                    size: Math.random() * 6 + 2,
-                    color: Math.random() > 0.5 ? '#ff4500' : '#ff8c00',
-                    alpha: 1
+                    x: m.x + (Math.random() * 10 - 5), y: m.y + (Math.random() * 10 - 5),
+                    vx: m.speed * 0.5 + Math.random() * 2, vy: Math.random() * 2 - 1,
+                    size: Math.random() * 6 + 2, color: Math.random() > 0.5 ? '#ff4500' : '#ff8c00', alpha: 1
                 });
             }
-            // Поворот метеорита вокруг своей оси
             m.angle += m.rotSpeed;
         });
 
-        // Обновление и фильтрация частиц хвоста
         particles.forEach((p, i) => {
-            p.x += p.vx;
-            p.y += p.vy;
-            p.alpha -= 0.04; // Частицы плавно исчезают
+            p.x += p.vx; p.y += p.vy; p.alpha -= 0.04;
             if (p.alpha <= 0) particles.splice(i, 1);
         });
 
-        // Столкновение с метеоритами
+        // Столкновение с метеоритами и звук урона
         if (state.invulnerable > 0) state.invulnerable--;
         meteors.forEach((m, i) => {
             m.x -= m.speed;
             let dist = Math.sqrt(Math.pow((player.x+25)-m.x, 2) + Math.pow((player.y+25)-m.y, 2));
             if (dist < m.size + 15 && state.invulnerable <= 0) {
-                state.hp--; state.invulnerable = 60; meteors.splice(i, 1);
-                if (state.hp <= 0) resetGame();
+                state.hp--; 
+                state.invulnerable = 60; 
+                meteors.splice(i, 1);
+                
+                if (state.hp <= 0) {
+                    playSnd('sndDeath'); // Звук смерти
+                    resetGame();
+                } else {
+                    playSnd('sndHit'); // Звук получения урона
+                }
             }
         });
 
-        if (player.y > canvas.height + 400) resetGame();
+        // Звук смерти при падении в бездну
+        if (player.y > canvas.height + 400) {
+            playSnd('sndDeath');
+            resetGame();
+        }
         
-        // Рекорды и камера
         state.distance = Math.max(state.distance, Math.floor(player.x));
         if (state.distance > state.highScore) {
             state.highScore = state.distance;
@@ -267,7 +337,6 @@
 
     // === ПОДБЛОК: ОТРИСОВКА (ГРАФИКА) ===
     function draw() {
-        // Космический живой градиент
         let gradient = ctx.createLinearGradient(0, -state.bgOffset % canvas.height, 0, canvas.height + (-state.bgOffset % canvas.height));
         gradient.addColorStop(0, '#050515');
         gradient.addColorStop(0.5, '#150828');
@@ -275,7 +344,6 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Звезды
         stars.forEach(s => {
             let sx = (s.x - state.cameraX * 0.2) % canvas.width;
             if (sx < 0) sx += canvas.width;
@@ -286,22 +354,16 @@
         ctx.save();
         ctx.translate(-state.cameraX, 0);
 
-        // Изменение 2: Отрисовка огненных хвостов метеоритов
         particles.forEach(p => {
             ctx.save();
-            ctx.globalAlpha = p.alpha;
-            ctx.fillStyle = p.color;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color;
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
             ctx.restore();
         });
 
-        // Изменение 3: Новый стильный дизайн плит под стиль нового фона
+        // Отрисовка платформ
         platforms.forEach(p => {
             ctx.save();
-            
-            // Сдвиг контекста для отрисовки пружинящего эффекта снизу вверх
             ctx.translate(p.x + p.w / 2, p.y + p.h);
             ctx.scale(1, p.scaleY);
             ctx.translate(-(p.x + p.w / 2), -(p.y + p.h));
@@ -314,11 +376,13 @@
                     ctx.fillStyle = p.isTouched ? '#cc2929' : '#661414'; ctx.shadowColor = '#ff3333'; 
                 }
             }
-            // Зеленый батут с ярким неоновым свечением
             else if (p.type === 'jump') { 
                 ctx.fillStyle = '#103d10'; ctx.shadowColor = '#00ff00'; 
             }
-            // Изменение 3: Обычные плиты стали темно-графитовыми с мягким сине-фиолетовым неоновым светом
+            // Изменение 2: Новая золотая платформа с сочным желтым неоновым свечением
+            else if (p.type === 'gold') {
+                ctx.fillStyle = '#4a3c00'; ctx.shadowColor = '#ffd700';
+            }
             else { 
                 ctx.fillStyle = '#1a1a24'; ctx.shadowColor = '#8a2be2'; 
             }
@@ -326,9 +390,9 @@
             ctx.fillRect(p.x, p.y, p.w, p.h);
             ctx.shadowBlur = 0;
             
-            // Красивая окантовка плит
             if (p.type === 'jump') ctx.strokeStyle = '#00ff00';
             else if (p.type === 'trap') ctx.strokeStyle = '#ff3333';
+            else if (p.type === 'gold') ctx.strokeStyle = '#ffd700';
             else ctx.strokeStyle = '#da70d6';
             
             ctx.lineWidth = 2;
@@ -336,12 +400,11 @@
             ctx.restore();
         });
 
-        // Изменение 2: Отрисовка метеоритов с вращением (Текстура или Свечение)
+        // Метеориты
         meteors.forEach(m => { 
             ctx.save();
             ctx.translate(m.x, m.y);
-            ctx.rotate(m.angle); // Вращаем контекст рисования
-            
+            ctx.rotate(m.angle);
             if (meteorImg.complete && meteorImg.width > 0) {
                 ctx.drawImage(meteorImg, -m.size, -m.size, m.size * 2, m.size * 2);
             } else {
@@ -352,47 +415,58 @@
             ctx.restore();
         });
 
-        // Монеты (Изменение 1: Увеличен размер до радиуса 17 и добавлено сглаживание)
+        // Монеты
         coins.forEach(c => { 
             if(!c.collected) { 
                 ctx.save();
                 ctx.translate(c.x, c.y);
                 ctx.scale(Math.abs(Math.sin(state.coinAnimTimer)), 1); 
-                
-                // Чтобы пиксельное разрешение не казалось размытым, отключаем сглаживание для текстуры монеты
                 ctx.imageSmoothingEnabled = false; 
-                
                 if (coinImg.complete && coinImg.width > 0) {
-                    ctx.drawImage(coinImg, -17, -17, 34, 34); // Изменение 1: увеличен размер с 28 до 34
+                    ctx.drawImage(coinImg, -17, -17, 34, 34);
                 } else {
                     ctx.fillStyle = '#FFD700';
                     ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI*2); ctx.fill(); 
-                    ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 2; ctx.stroke();
-                }
+                ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 2; ctx.stroke();
+                    }
                 ctx.restore();
-            } 
-        });
+                }
+            });
 
-        // Игрок
+        // Игрок (Изменение 3: Рендеринг с учетом наклонов и сальто)
         if (state.invulnerable % 10 < 5) {
-            if (playerImg.complete && playerImg.width > 0) {
-                ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
-            } else { 
-                ctx.fillStyle = "red"; ctx.fillRect(player.x, player.y, player.width, player.height); 
+            ctx.save();
+            // Смещаем центр вращения в середину Амогуса
+        ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+            // Применяем угол бега ИЛИ угол сальто
+        if (player.isFlipping) {
+            ctx.rotate(player.flipAngle);
+            } else {
+            ctx.rotate(player.angle);
             }
+
+        if (playerImg.complete && playerImg.width > 0) {
+            ctx.drawImage(playerImg, -player.width / 2, -player.height / 2, player.width,
+                          player.height);
+            } else {
+            ctx.fillStyle = "red"; ctx.fillRect(-player.width / 2, -player.height / 2, player.width);
+            }
+            ctx.restore();
+            }
+            ctx.restore();
         }
-        ctx.restore();
-    }
 
-    // === ПОДБЛОК: ПЕРЕЗАПУСК ===
-    function resetGame() {
+        // === ПОДБЛОК: ПЕРЕЗАПУСК ===
+        function resetGame() {
+            // Принудительно выключаем звук шагов, если перезапускаемся во время бега
+        const walkSnd = document.getElementById('sndWalk');
+            if (walkSnd && !walkSnd.paused) walkSnd.pause();
+
         state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
-        player.x = 50; player.y = 100; player.dx = 0; player.dy = 0;
-        platforms = []; coins = []; meteors = []; particles = [];
-        generateWorld(); 
-    }
+            player.x = 50; player.y = 100; player.dx = 0; player.dy = 0; player.angle = 0;
+            player.flipAngle = 0; player.isFlipping = false;
+            platforms = []; coins = []; meteors = []; particles = [];
+            generateWorld();
+            }
 
-    update();
-    </script>
-</body>
-</html>
+        update();
