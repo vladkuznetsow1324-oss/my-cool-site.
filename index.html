@@ -16,13 +16,13 @@
     <audio id="sndBuy"><source src="buy.mp3" type="audio/mpeg"></audio>
     <audio id="sndHit"><source src="hit.mp3" type="audio/mpeg"></audio>
     <audio id="sndDeath"><source src="death.mp3" type="audio/mpeg"></audio>
+    <!-- Изменение 1: Новый звук глухого удара при тяжелом приземлении -->
+    <audio id="sndLand"><source src="land.mp3" type="audio/mpeg"></audio>
 
     <!-- [СТИЛИ] -->
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
         canvas { display: block; }
-        
-        /* Изменение 1: Минималистичный и чистый белый цвет для текста и кнопок в меню */
         #menu {
             position: absolute; width: 100%; height: 100%;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -36,8 +36,6 @@
             transition: 0.3s; font-family: inherit;
         }
         #menu button:hover { background: #ffffff; color: #000; box-shadow: 0 0 25px #ffffff; }
-        
-        /* Изменение 1: Белый текст для игровой панели очков */
         .ui { 
             position: absolute; top: 15px; left: 15px; 
             color: #ffffff; font-size: 20px; pointer-events: none;
@@ -72,19 +70,23 @@
         highScore: localStorage.getItem('highScore') || 0,
         invulnerable: 0, cameraX: 0, gameActive: false,
         coinAnimTimer: 0
-        // Изменение 2: Полностью убрали переменную bgOffset, фон статичен
     };
 
     const playerImg = new Image(); playerImg.src = 'Photo1.jpg'; 
     const coinImg = new Image(); coinImg.src = 'coin.png';
     const meteorImg = new Image(); meteorImg.src = 'meteor.png';
 
+    // Изменение 2: Добавили параметры scaleX и scaleY для плавной анимации сжатия/растяжения Амогуса
     const player = { 
         x: 50, y: 100, width: 55, height: 55, dx: 0, dy: 0, grounded: false,
-        angle: 0, flipAngle: 0, isFlipping: false 
+        angle: 0, flipAngle: 0, isFlipping: false,
+        scaleX: 1, scaleY: 1, 
+        wasInAirFromTrampoline: false // Флаг, летим ли мы после зеленого батута
     };
     
-    let platforms = []; let coins = []; let meteors = []; let stars = []; let particles = [];
+    let platforms = []; let coins = []; let meteors = []; let stars = []; 
+    let particles = []; // Хвосты метеоритов
+    let landParticles = []; // Изменение 1: Новый массив для цветных искр приземления
     const keys = {};
 
     for(let i=0; i<120; i++) {
@@ -110,7 +112,8 @@
 
     window.addEventListener('keydown', e => {
         keys[e.code] = true;
-        if (e.code === 'KeyB' && state.coins >= CONFIG.shopPrice) {
+        // Изменение 3: Теперь покупка ХП срабатывает строго на удобную клавишу 'V' вместо 'B'
+        if (e.code === 'KeyV' && state.coins >= CONFIG.shopPrice) {
             state.coins -= CONFIG.shopPrice; state.hp++;
             playSnd('sndBuy');
         }
@@ -132,22 +135,16 @@
 
         const lastP = platforms[platforms.length - 1];
         if (player.x > lastP.x - 1200) {
-            
-            // Изменение 4: Стабильная и на 100% проходимая генерация расстояний
-            // Ограничиваем минимальную пропасть 80px, а максимальную 200px (даже с ростом дистанции)
             const baseGap = 80 + Math.random() * 80; 
-            const dynamicGap = Math.min(40, state.distance / 400); // Небольшой прирост усложнения
-            const finalGap = baseGap + dynamicGap; // Дистанция между плитами никогда не превысит честные 200px
+            const dynamicGap = Math.min(40, state.distance / 400); 
+            const finalGap = baseGap + dynamicGap; 
             const newX = lastP.x + lastP.w + finalGap;
             
-            // Стабилизируем высоту: перепады высот теперь плавные (не более 90px вверх или вниз)
             const targetY = lastP.y + (Math.random() * 180 - 90);
             const newY = Math.max(180, Math.min(canvas.height - 180, targetY));
             
             let rand = Math.random();
             let type = rand > 0.90 ? 'trap' : (rand > 0.80 ? 'jump' : (rand > 0.72 ? 'gold' : 'normal'));
-            
-            // Задаем случайную ширину плиты
             const pWidth = Math.random() * 150 + 90;
             
             platforms.push({
@@ -155,22 +152,17 @@
                 isTouched: false, timer: 60, scaleY: 1, targetScaleY: 1
             });
             
-            // Изменение 3: Динамический расчет монет строго по центру желтой плиты
             if (type === 'gold') {
-                // Вычисляем количество монет на основе ширины: маленькая плита = 2, средняя = 3, большая = 4
                 let coinCount = 3;
                 if (pWidth < 130) coinCount = 2;
                 if (pWidth > 200) coinCount = 4;
-                
-                // Равномерно распределяем монетки по центру плиты
                 const totalSpacing = (coinCount - 1) * 35; 
                 const startX = newX + (pWidth - totalSpacing) / 2; 
-                
                 for(let c = 0; c < coinCount; c++) {
                     coins.push({x: startX + (c * 35), y: newY - 45, collected: false});
                 }
             } else if (Math.random() > 0.4 && type === 'normal') {
-                coins.push({x: newX + pWidth / 2, y: newY - 45, collected: false}); // Обычная монетка тоже по центру
+                coins.push({x: newX + pWidth / 2, y: newY - 45, collected: false});
             }
             
             if (Math.random() > 0.6) {
@@ -190,7 +182,10 @@
 
         let moving = false;
 
-        // Физика наклонов при беге
+        // Плавное возвращение размеров Амогуса к стандартным 1:1
+        player.scaleX += (1 - player.scaleX) * 0.1;
+        player.scaleY += (1 - player.scaleY) * 0.1;
+
         if (keys['ArrowLeft'] || keys['KeyA']) {
             player.dx = -CONFIG.playerSpeed;
             player.angle = -0.15; 
@@ -204,7 +199,6 @@
             player.angle *= 0.8; 
         }
         
-        // Воспроизведение звука хождения по земле
         const walkSnd = document.getElementById('sndWalk');
         if (walkSnd) {
             walkSnd.volume = 0.9;
@@ -215,14 +209,16 @@
             }
         }
 
-        // Кнопки прыжка
+        // Прыжок и Изменение 2: Анимация вытягивания вверх при прыжке
         if ((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) { 
             player.dy = CONFIG.jumpPower; 
             player.grounded = false; 
             playSnd('sndJump');
+            
+            player.scaleY = 1.25; // Вытягивается вверх
+            player.scaleX = 0.85; // Сжимается по бокам
         }
 
-        // Вращение сальто
         if (player.isFlipping) {
             player.flipAngle += 0.2; 
             if (player.flipAngle >= Math.PI * 2) {
@@ -234,17 +230,17 @@
         player.dy += CONFIG.gravity;
         player.x += player.dx;
         player.y += player.dy;
+        
+        let oldGrounded = player.grounded;
         player.grounded = false;
 
         state.coinAnimTimer += 0.05;
 
-        // Мерцание звезд
         stars.forEach(s => {
             s.alpha += s.twinkleSpeed;
             if (s.alpha > 1 || s.alpha < 0.2) s.twinkleSpeed = -s.twinkleSpeed;
         });
 
-        // Пружинящие платформы
         platforms.forEach(p => {
             p.scaleY += (p.targetScaleY - p.scaleY) * 0.15;
             if (Math.abs(p.scaleY - p.targetScaleY) < 0.01) p.targetScaleY = 1;
@@ -253,6 +249,44 @@
         // Взаимодействие с платформами
         platforms.forEach((p, i) => {
             if (player.x < p.x + p.w && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
+                
+                // Проверяем, упали ли мы с большой высоты (скорость падения dy > 6)
+                if (!oldGrounded && player.dy > 6) {
+                    // Изменение 2: Анимация приземления (сплющивание)
+                    player.scaleY = 0.75; // Прижимается к полу
+                    player.scaleX = 1.2;  // Расширяется в стороны
+                    
+                    // Изменение 1: Определяем цвет искр в зависимости от типа плиты
+                    let pColor = '#da70d6'; // Обычная плита (Орхидея/Фиолетовый)
+                    if (p.type === 'jump') pColor = '#00ff00'; // Зеленая
+                    if (p.type === 'trap') pColor = '#ff3333'; // Красная
+                    if (p.type === 'gold') pColor = '#ffd700'; // Желтая
+                    
+                    // Создаем 15 цветных искр разлетающихся в стороны
+                    for (let k = 0; k < 15; k++) {
+                        landParticles.push({
+                            x: player.x + player.width / 2,
+                            y: p.y,
+                            vx: Math.random() * 6 - 3,
+                            vy: Math.random() * -4 - 1, // Летят немного вверх
+                            size: Math.random() * 4 + 2,
+                            color: pColor,
+                            alpha: 1
+                        });
+                    }
+
+                    // Изменение 1: Условия для глухого звука удара (sndLand)
+                    // Воспроизводится всегда при жестком падении, кроме случая когда мы прыгнули на батуте и приземлились обратно на этот же батут
+                    if (player.wasInAirFromTrampoline) {
+                        if (p.type !== 'jump') {
+                            playSnd('sndLand');
+                            player.wasInAirFromTrampoline = false;
+                        }
+                    } else {
+                        playSnd('sndLand');
+                    }
+                }
+
                 player.y = p.y - player.height;
                 
                 if (p.type === 'jump') {
@@ -262,11 +296,14 @@
                     
                     player.isFlipping = true;
                     player.flipAngle = 0;
+                    player.wasInAirFromTrampoline = true; // Запомнили, что вылетели с батута
                     playSnd('sndTrampoline');
                 } else {
                     player.dy = 0;
                     player.isFlipping = false;
                     player.flipAngle = 0;
+                    // Если встали на любую не-батутную плиту, сбрасываем флаг батутного полета
+                    if (p.type !== 'jump') player.wasInAirFromTrampoline = false;
                 }
                 
                 player.grounded = true;
@@ -291,7 +328,7 @@
             }
         });
 
-        // Частицы хвоста метеоритов
+        // Хвосты метеоритов
         meteors.forEach(m => {
             if (Math.random() > 0.3) {
                 particles.push({
@@ -308,7 +345,16 @@
             if (p.alpha <= 0) particles.splice(i, 1);
         });
 
-        // Получение урона
+        // Обновление и исчезновение искр приземления
+        landParticles.forEach((lp, i) => {
+            lp.x += lp.vx;
+            lp.y += lp.vy;
+            lp.vy += 0.15; // Гравитация для искр, чтобы они красиво падали вниз
+            lp.alpha -= 0.03;
+            if (lp.alpha <= 0) landParticles.splice(i, 1);
+        });
+
+        // Столкновение с метеоритами
         if (state.invulnerable > 0) state.invulnerable--;
         meteors.forEach((m, i) => {
             m.x -= m.speed;
@@ -327,7 +373,6 @@
             }
         });
 
-        // Падение
         if (player.y > canvas.height + 400) {
             playSnd('sndDeath');
             resetGame();
@@ -340,10 +385,9 @@
         }
         state.cameraX = player.x - canvas.width / 4;
         
-        // Обновление UI
         document.getElementById('scoreBoard').innerHTML = 
             `HP: ${state.hp} | Монеты: ${state.coins} | Рекорд: ${state.highScore}<br>Дистанция: ${state.distance}<br>` +
-            `<span style="color:#fff">Жми 'B' - купить HP (10 монет)</span>`; // Белая надпись покупки
+            `<span style="color:#fff">Жми 'V' - купить HP (10 монет)</span>`;
 
         generateWorld();
         draw();
@@ -351,7 +395,7 @@
     }
     // === ПОДБЛОК: ОТРИСОВКА (ГРАФИКА) ===
     function draw() {
-        // Изменение 2: Статичный космический градиент (без привязки к state.bgOffset)
+        // Статичный космический градиент
         let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
         gradient.addColorStop(0, '#050515');
         gradient.addColorStop(0.5, '#150828');
@@ -359,7 +403,7 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Звезды по-прежнему мягко мерцают
+        // Звезды
         stars.forEach(s => {
             let sx = (s.x - state.cameraX * 0.2) % canvas.width;
             if (sx < 0) sx += canvas.width;
@@ -375,6 +419,17 @@
             ctx.save();
             ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color;
             ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        });
+
+        // Изменение 1: Отрисовка цветных искр приземления с учетом их прозрачности
+        landParticles.forEach(lp => {
+            ctx.save();
+            ctx.globalAlpha = lp.alpha;
+            ctx.fillStyle = lp.color;
+            ctx.beginPath();
+            ctx.arc(lp.x, lp.y, lp.size, 0, Math.PI * 2);
+            ctx.fill();
             ctx.restore();
         });
 
@@ -431,7 +486,7 @@
             ctx.restore();
         });
 
-        // Монеты (Красиво распределяются по центру желтых плит)
+        // Монеты
         coins.forEach(c => { 
             if(!c.collected) { 
                 ctx.save();
@@ -449,21 +504,27 @@
             } 
         });
 
-        // Амогус
+        // Игрок с Изменением 2: Рендеринг деформации сжатия и вытягивания (player.scaleX / Y)
         if (state.invulnerable % 10 < 5) {
             ctx.save();
-            ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+            // Сначала смещаемся к ногам персонажа, чтобы сжатие происходило относительно земли, а не центра
+            ctx.translate(player.x + player.width / 2, player.y + player.height);
             
+            // Применяем масштабирование (сплющивание/вытягивание)
+            ctx.scale(player.scaleX, player.scaleY);
+            
+            // Применяем вращение сальто или наклон бега
             if (player.isFlipping) {
                 ctx.rotate(player.flipAngle);
             } else {
                 ctx.rotate(player.angle);
             }
             
+            // Рисуем спрайт, смещая его обратно, чтобы точка опоры осталась внизу
             if (playerImg.complete && playerImg.width > 0) {
-                ctx.drawImage(playerImg, -player.width / 2, -player.height / 2, player.width, player.height);
+                ctx.drawImage(playerImg, -player.width / 2, -player.height, player.width, player.height);
             } else { 
-                ctx.fillStyle = "red"; ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height); 
+                ctx.fillStyle = "red"; ctx.fillRect(-player.width / 2, -player.height, player.width, player.height); 
             }
             ctx.restore();
         }
@@ -476,8 +537,9 @@
         if (walkSnd && !walkSnd.paused) walkSnd.pause();
 
         state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
-        player.x = 50; player.y = 100; player.dx = 0; player.dy = 0; player.angle = 0; player.flipAngle = 0; player.isFlipping = false;
-        platforms = []; coins = []; meteors = []; particles = [];
+        player.x = 50; player.y = 100; player.dx = 0; player.dy = 0; player.angle = 0; player.flipAngle = 0; 
+        player.isFlipping = false; player.scaleX = 1; player.scaleY = 1; player.wasInAirFromTrampoline = false;
+        platforms = []; coins = []; meteors = []; particles = []; landParticles = [];
         generateWorld(); 
     }
 
