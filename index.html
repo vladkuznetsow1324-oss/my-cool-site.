@@ -86,6 +86,10 @@
     
     let platforms = []; let coins = []; let meteors = []; let stars = []; 
     let particles = []; let landParticles = []; 
+    
+    // ИСПРАВЛЕНИЕ: Выносим белую плиту в отдельный независимый объект, чтобы убрать её из массива генерации дорожек!
+    let customWhitePlatform = null; 
+    
     const keys = {};
 
     for(let i=0; i<120; i++) {
@@ -128,18 +132,17 @@
         if ((e.code === 'KeyS' || e.code === 'ArrowDown') && state.savedPlatformsCount > 0) {
             state.savedPlatformsCount--; 
             
-            platforms.push({
+            // ИСПРАВЛЕНИЕ: Переносим создание плиты строго в наш независимый объект.
+            // Теперь она появляется ровно под ногами (без смещения Y), спасая Амогуса, но генератор мира её игнорирует!
+            customWhitePlatform = {
                 x: player.x - 50, 
-                // Изменение: опустили координату Y чуть ниже (на 20px под ноги), чтобы Амогус при спавне в падении гарантированно приземлялся сверху, а не проваливался сквозь неё
-                y: player.y + player.height + 20, 
+                y: player.y + player.height, 
                 w: 160, 
                 h: 25, 
-                type: 'custom_white', 
-                isTouched: false, 
                 timer: 900, 
                 scaleY: 1, 
                 targetScaleY: 1
-            });
+            };
             playSnd('sndSpawn'); 
         }
     });
@@ -162,6 +165,7 @@
             return;
         }
 
+        // Так как белой плиты больше нет в массиве 'platforms', генератор смотрит ТОЛЬКО на настоящую последнюю плиту дорожки. Баг со второй полосой исправлен!
         const lastP = platforms[platforms.length - 1];
         if (player.x > lastP.x - 1200) {
             const baseGap = 80 + Math.random() * 80; 
@@ -203,16 +207,7 @@
                 });
             }
         }
-        
-        // ИСПРАВЛЕНИЕ: сборщик мусора теперь удаляет старую плиту ТОЛЬКО если это не ваша белая переносная платформа!
-        if (platforms.length > 45) {
-            if (platforms[0].type !== 'custom_white') {
-                platforms.shift();
-            } else {
-                // Если самая старая плита оказалась белой, удаляем следующую за ней обычную, чтобы ничего не ломалось
-                platforms.splice(1, 1);
-            }
-        }
+        if (platforms.length > 30) platforms.shift(); // Вернули стабильный чистый лимит удаления
     }
     // === ПОДБЛОК: ЛОГИКА (ОБНОВЛЕНИЕ КАДРА) ===
     function update() {
@@ -285,7 +280,13 @@
             if (Math.abs(p.scaleY - p.targetScaleY) < 0.01) p.targetScaleY = 1;
         });
 
-        // Взаимодействие с платформами
+        // Плавное возвращение упругости для независимой белой плиты
+        if (customWhitePlatform) {
+            customWhitePlatform.scaleY += (customWhitePlatform.targetScaleY - customWhitePlatform.scaleY) * 0.15;
+            if (Math.abs(customWhitePlatform.scaleY - customWhitePlatform.targetScaleY) < 0.01) customWhitePlatform.targetScaleY = 1;
+        }
+
+        // Взаимодействие с обычными платформой из генератора
         platforms.forEach((p, i) => {
             if (player.x < p.x + p.w && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
                 
@@ -297,7 +298,6 @@
                     let pColor = '#da70d6'; 
                     if (p.type === 'trap') pColor = '#ff3333'; 
                     if (p.type === 'gold') pColor = '#ffd700'; 
-                    if (p.type === 'custom_white') pColor = '#ffffff'; // Искры от белой плиты
                     
                     for (let k = 0; k < 15; k++) {
                         landParticles.push({
@@ -341,17 +341,44 @@
                 }
             }
             
-            // Логика уменьшения таймеров для ловушек и переносных белых плит
             if (p.type === 'trap' && p.isTouched) { 
                 p.timer--; 
                 if (p.timer <= 0) platforms.splice(i, 1); 
             }
-            // Переносная белая плита уменьшает свой таймер постоянно с момента создания
-            if (p.type === 'custom_white') {
-                p.timer--;
-                if (p.timer <= 0) platforms.splice(i, 1);
-            }
         });
+
+        // ИСПРАВЛЕНИЕ: Отдельная физика коллизии для независимой белой переносной платформы
+        if (customWhitePlatform) {
+            let wp = customWhitePlatform;
+            if (player.x < wp.x + wp.w && player.x + player.width > wp.x && player.y + player.height > wp.y && player.y + player.height < wp.y + wp.h + 20 && player.dy >= 0) {
+                
+                // Эффект искр, если мы приземлились на неё после батута
+                if (!oldGrounded && player.wasInAirFromTrampoline) {
+                    player.scaleY = 0.75; player.scaleX = 1.2;
+                    for (let k = 0; k < 15; k++) {
+                        landParticles.push({
+                            x: player.x + player.width / 2, y: wp.y,
+                            vx: Math.random() * 6 - 3, vy: Math.random() * -4 - 1,
+                            size: Math.random() * 4 + 2, color: '#ffffff', alpha: 1
+                        });
+                    }
+                    playSnd('sndLand');
+                    player.wasInAirFromTrampoline = false;
+                }
+
+                player.y = wp.y - player.height;
+                player.dy = 0;
+                player.isFlipping = false;
+                player.flipAngle = 0;
+                player.grounded = true;
+            }
+
+            // Уменьшаем таймер жизни белой плиты
+            wp.timer--;
+            if (wp.timer <= 0) {
+                customWhitePlatform = null; // Полное и чистое бесследное удаление объекта
+            }
+        }
 
         // Сбор монет
         coins.forEach(c => {
@@ -415,7 +442,6 @@
         }
         state.cameraX = player.x - canvas.width / 4;
         
-        // Обновление белого UI: Выводим ХП, Плиты, Рекорды и кнопки управления магазином
         document.getElementById('scoreBoard').innerHTML = 
             `HP: ${state.hp} | Монеты: ${state.coins} | Рекорд: ${state.highScore}<br>Дистанция: ${state.distance}<br>` +
             `<span style="color:#fff">Жми 'V' - Купить HP (10 монет) | Жми 'E' - Купить плиту (15 монет, в запасе: ${state.savedPlatformsCount})</span><br>` +
@@ -462,63 +488,77 @@
             ctx.restore();
         });
 
-        // Отрисовка платформ
+        // Отрисовка обычных платформ из генератора дорожек
         platforms.forEach(p => {
             ctx.save();
             ctx.translate(p.x + p.w / 2, p.y + p.h);
             ctx.scale(1, p.scaleY);
             ctx.translate(-(p.x + p.w / 2), -(p.y + p.h));
 
-            // Логика Изменения 1: Эффект учащающегося мигания для переносной белой плиты
-            let shouldDrawCustomWhite = true;
-            if (p.type === 'custom_white') {
-                // Плита живет 900 кадров (15 сек). Осталось p.timer кадров.
-                if (p.timer <= 180) {
-                    // Последние 3 секунды: мигает очень быстро (каждые 4 кадра)
-                    if (Math.floor(p.timer / 4) % 2 === 0) shouldDrawCustomWhite = false;
-                } else if (p.timer <= 300) {
-                    // С 10 по 12 секунду (осталось 5-3 сек): мигает медленнее (каждые 12 кадров)
-                    if (Math.floor(p.timer / 12) % 2 === 0) shouldDrawCustomWhite = false;
+            ctx.shadowBlur = 18;
+            if (p.type === 'trap') { 
+                if (p.isTouched && p.timer % 10 < 5) {
+                    ctx.fillStyle = '#ff4d4d'; ctx.shadowColor = '#ff1a1a';
+                } else {
+                    ctx.fillStyle = p.isTouched ? '#cc2929' : '#661414'; ctx.shadowColor = '#ff3333'; 
                 }
             }
-
-            if (shouldDrawCustomWhite) {
-                ctx.shadowBlur = 18;
-                if (p.type === 'trap') { 
-                    if (p.isTouched && p.timer % 10 < 5) {
-                        ctx.fillStyle = '#ff4d4d'; ctx.shadowColor = '#ff1a1a';
-                    } else {
-                        ctx.fillStyle = p.isTouched ? '#cc2929' : '#661414'; ctx.shadowColor = '#ff3333'; 
-                    }
-                }
-                else if (p.type === 'jump') { 
-                    ctx.fillStyle = '#103d10'; ctx.shadowColor = '#00ff00'; 
-                }
-                else if (p.type === 'gold') {
-                    ctx.fillStyle = '#4a3c00'; ctx.shadowColor = '#ffd700';
-                }
-                // Наша новая переносная плита: Яркий белый неон!
-                else if (p.type === 'custom_white') {
-                    ctx.fillStyle = '#444444'; ctx.shadowColor = '#ffffff';
-                }
-                else { 
-                    ctx.fillStyle = '#1a1a24'; ctx.shadowColor = '#8a2be2'; 
-                }
-                
-                ctx.fillRect(p.x, p.y, p.w, p.h);
-                ctx.shadowBlur = 0;
-                
-                if (p.type === 'jump') ctx.strokeStyle = '#00ff00';
-                else if (p.type === 'trap') ctx.strokeStyle = '#ff3333';
-                else if (p.type === 'gold') ctx.strokeStyle = '#ffd700';
-                else if (p.type === 'custom_white') ctx.strokeStyle = '#ffffff';
-                else ctx.strokeStyle = '#da70d6';
-                
-                ctx.lineWidth = 2;
-                ctx.strokeRect(p.x, p.y, p.w, p.h);
+            else if (p.type === 'jump') { 
+                ctx.fillStyle = '#103d10'; ctx.shadowColor = '#00ff00'; 
             }
+            else if (p.type === 'gold') {
+                ctx.fillStyle = '#4a3c00'; ctx.shadowColor = '#ffd700';
+            }
+            else { 
+                ctx.fillStyle = '#1a1a24'; ctx.shadowColor = '#8a2be2'; 
+            }
+            
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.shadowBlur = 0;
+            
+            if (p.type === 'jump') ctx.strokeStyle = '#00ff00';
+            else if (p.type === 'trap') ctx.strokeStyle = '#ff3333';
+            else if (p.type === 'gold') ctx.strokeStyle = '#ffd700';
+            else ctx.strokeStyle = '#da70d6';
+            
+            ctx.lineWidth = 2;
+            ctx.strokeRect(p.x, p.y, p.w, p.h);
             ctx.restore();
         });
+
+        // ИСПРАВЛЕНИЕ: Отдельная изолированная отрисовка независимой белой переносной плиты
+        if (customWhitePlatform) {
+            let wp = customWhitePlatform;
+            let shouldDraw = true;
+
+            // Логика учащающегося мигания на основе её собственного таймера
+            if (wp.timer <= 180) {
+                // Последние 3 секунды: бешеное мигание (каждые 4 кадра)
+                if (Math.floor(wp.timer / 4) % 2 === 0) shouldDraw = false;
+            } else if (wp.timer <= 300) {
+                // С 10 по 12 секунду: умеренное мигание (каждые 12 кадров)
+                if (Math.floor(wp.timer / 12) % 2 === 0) shouldDraw = false;
+            }
+
+            if (shouldDraw) {
+                ctx.save();
+                // Мягкий пружинящий эффект
+                ctx.translate(wp.x + wp.w / 2, wp.y + wp.h);
+                ctx.scale(1, wp.scaleY);
+                ctx.translate(-(wp.x + wp.w / 2), -(wp.y + wp.h));
+
+                ctx.shadowBlur = 18;
+                ctx.shadowColor = '#ffffff'; // Белый неон
+                ctx.fillStyle = '#444444';
+                ctx.fillRect(wp.x, wp.y, wp.w, wp.h);
+                
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(wp.x, wp.y, wp.w, wp.h);
+                ctx.restore();
+            }
+        }
 
         // Метеориты
         meteors.forEach(m => { 
@@ -553,7 +593,7 @@
             } 
         });
 
-        // Игрок (Отрисовка сальто и сжатия)
+        // Амогус (Сальто и Сжатие)
         if (state.invulnerable % 10 < 5) {
             ctx.save();
             ctx.translate(player.x + player.width / 2, player.y + player.height);
@@ -584,7 +624,10 @@
         state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
         player.x = 50; player.y = 100; player.dx = 0; player.dy = 0; player.angle = 0; player.flipAngle = 0; 
         player.isFlipping = false; player.scaleX = 1; player.scaleY = 1; player.wasInAirFromTrampoline = false;
-        state.savedPlatformsCount = 0; // Обнуляем запас карманных платформ при перезапуске
+        state.savedPlatformsCount = 0; 
+        
+        customWhitePlatform = null; // ИСПРАВЛЕНИЕ: Обязательно уничтожаем белую плиту при перезапуске игры
+        
         platforms = []; coins = []; meteors = []; particles = []; landParticles = [];
         generateWorld(); 
     }
