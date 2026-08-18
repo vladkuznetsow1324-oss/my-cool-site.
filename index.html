@@ -16,8 +16,9 @@
     <audio id="sndBuy"><source src="buy.mp3" type="audio/mpeg"></audio>
     <audio id="sndHit"><source src="hit.mp3" type="audio/mpeg"></audio>
     <audio id="sndDeath"><source src="death.mp3" type="audio/mpeg"></audio>
-    <!-- Изменение 1: Новый звук глухого удара при тяжелом приземлении -->
     <audio id="sndLand"><source src="land.mp3" type="audio/mpeg"></audio>
+    <!-- Добавление: Новый звук спавна переносной белой плиты -->
+    <audio id="sndSpawn"><source src="spawn_platform.mp3" type="audio/mpeg"></audio>
 
     <!-- [СТИЛИ] -->
     <style>
@@ -62,31 +63,30 @@
     const ctx = canvas.getContext('2d');
 
     const CONFIG = {
-        playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10
+        playerSpeed: 7, jumpPower: -16, gravity: 0.8, hpMax: 3, shopPrice: 10,
+        platformPrice: 15 
     };
 
     let state = {
         distance: 0, coins: 0, hp: CONFIG.hpMax,
         highScore: localStorage.getItem('highScore') || 0,
         invulnerable: 0, cameraX: 0, gameActive: false,
-        coinAnimTimer: 0
+        coinAnimTimer: 0,
+        savedPlatformsCount: 0 
     };
 
     const playerImg = new Image(); playerImg.src = 'Photo1.jpg'; 
     const coinImg = new Image(); coinImg.src = 'coin.png';
     const meteorImg = new Image(); meteorImg.src = 'meteor.png';
 
-    // Изменение 2: Добавили параметры scaleX и scaleY для плавной анимации сжатия/растяжения Амогуса
     const player = { 
         x: 50, y: 100, width: 55, height: 55, dx: 0, dy: 0, grounded: false,
         angle: 0, flipAngle: 0, isFlipping: false,
-        scaleX: 1, scaleY: 1, 
-        wasInAirFromTrampoline: false // Флаг, летим ли мы после зеленого батута
+        scaleX: 1, scaleY: 1, wasInAirFromTrampoline: false 
     };
     
     let platforms = []; let coins = []; let meteors = []; let stars = []; 
-    let particles = []; // Хвосты метеоритов
-    let landParticles = []; // Изменение 1: Новый массив для цветных искр приземления
+    let particles = []; let landParticles = []; 
     const keys = {};
 
     for(let i=0; i<120; i++) {
@@ -110,15 +110,49 @@
         resetGame();
     }
 
+    // Слушатель нажатий кнопок
     window.addEventListener('keydown', e => {
-        keys[e.code] = true;
-        // Изменение 3: Теперь покупка ХП срабатывает строго на удобную клавишу 'V' вместо 'B'
+        // Исключаем S и Стрелочку Вниз из клавиш перемещения персонажа, чтобы не тормозить бег
+        if (e.code !== 'KeyS' && e.code !== 'ArrowDown') {
+            keys[e.code] = true;
+        }
+        
+        // Магазин: Купить ХП на кнопку V
         if (e.code === 'KeyV' && state.coins >= CONFIG.shopPrice) {
             state.coins -= CONFIG.shopPrice; state.hp++;
             playSnd('sndBuy');
         }
+
+        // Магазин: Купить платформу-сейв в инвентарь на кнопку E
+        if (e.code === 'KeyE' && state.coins >= CONFIG.platformPrice) {
+            state.coins -= CONFIG.platformPrice;
+            state.savedPlatformsCount++;
+            playSnd('sndBuy');
+        }
+
+        // Геймплей: Спавн белой платформы под ногами на S или Стрелочку Вниз
+        if ((e.code === 'KeyS' || e.code === 'ArrowDown') && state.savedPlatformsCount > 0) {
+            state.savedPlatformsCount--; 
+            
+            platforms.push({
+                x: player.x - 50, 
+                y: player.y + player.height, 
+                w: 160, 
+                h: 25, 
+                type: 'custom_white', 
+                isTouched: false, 
+                timer: 900, // Живёт 15 секунд
+                scaleY: 1, 
+                targetScaleY: 1
+            });
+            playSnd('sndSpawn'); // Запуск специального звука спавна плиты!
+        }
     });
-    window.addEventListener('keyup', e => keys[e.code] = false);
+    
+    window.addEventListener('keyup', e => {
+        keys[e.code] = false;
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') keys[e.code] = false;
+    });
 
     function resize() {
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
@@ -174,15 +208,15 @@
                 });
             }
         }
-        if (platforms.length > 30) platforms.shift();
+        if (platforms.length > 40) platforms.shift();
     }
-            // === ПОДБЛОК: ЛОГИКА (ОБНОВЛЕНИЕ КАДРА) ===
+    // === ПОДБЛОК: ЛОГИКА (ОБНОВЛЕНИЕ КАДРА) ===
     function update() {
         if (!state.gameActive) { draw(); requestAnimationFrame(update); return; }
 
         let moving = false;
 
-        // Плавное возвращение размеров Амогуса к стандарту
+        // Плавное возвращение размеров Амогуса к стандартным 1:1
         player.scaleX += (1 - player.scaleX) * 0.1;
         player.scaleY += (1 - player.scaleY) * 0.1;
 
@@ -251,15 +285,15 @@
         platforms.forEach((p, i) => {
             if (player.x < p.x + p.w && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
                 
-                // ИСПРАВЛЕНИЕ 2: Искры и звук ЛАНД появляются СТРОГО при падении после зеленого батута на другую плиту
+                // Умные искры и звук ЛАНД строго после батута
                 if (!oldGrounded && player.wasInAirFromTrampoline && p.type !== 'jump') {
-                    
                     player.scaleY = 0.75; 
                     player.scaleX = 1.2;  
                     
                     let pColor = '#da70d6'; 
                     if (p.type === 'trap') pColor = '#ff3333'; 
                     if (p.type === 'gold') pColor = '#ffd700'; 
+                    if (p.type === 'custom_white') pColor = '#ffffff'; // Искры от белой плиты
                     
                     for (let k = 0; k < 15; k++) {
                         landParticles.push({
@@ -273,8 +307,8 @@
                         });
                     }
 
-                    playSnd('sndLand'); // Глухой удар играет только здесь
-                    player.wasInAirFromTrampoline = false; // Сброс флага
+                    playSnd('sndLand'); 
+                    player.wasInAirFromTrampoline = false; 
                 }
 
                 player.y = p.y - player.height;
@@ -286,13 +320,12 @@
                     
                     player.isFlipping = true;
                     player.flipAngle = 0;
-                    player.wasInAirFromTrampoline = true; // Активируем полет с батута
+                    player.wasInAirFromTrampoline = true; 
                     playSnd('sndTrampoline');
                 } else {
                     player.dy = 0;
                     player.isFlipping = false;
                     player.flipAngle = 0;
-                    // Если приземлились на обычную плиту (и не было батутного полета), просто обнуляем флаг
                     if (!player.wasInAirFromTrampoline) player.wasInAirFromTrampoline = false;
                 }
                 
@@ -303,9 +336,16 @@
                     playSnd('sndTrap');
                 }
             }
-            if (p.isTouched) { 
+            
+            // Логика уменьшения таймеров для ловушек и переносных белых плит
+            if (p.type === 'trap' && p.isTouched) { 
                 p.timer--; 
                 if (p.timer <= 0) platforms.splice(i, 1); 
+            }
+            // Переносная белая плита уменьшает свой таймер постоянно с момента создания
+            if (p.type === 'custom_white') {
+                p.timer--;
+                if (p.timer <= 0) platforms.splice(i, 1);
             }
         });
 
@@ -335,12 +375,8 @@
             if (p.alpha <= 0) particles.splice(i, 1);
         });
 
-        // Физика падения искр
         landParticles.forEach((lp, i) => {
-            lp.x += lp.vx;
-            lp.y += lp.vy;
-            lp.vy += 0.15; 
-            lp.alpha -= 0.03;
+            lp.x += lp.vx; lp.y += lp.vy; lp.vy += 0.15; lp.alpha -= 0.03;
             if (lp.alpha <= 0) landParticles.splice(i, 1);
         });
 
@@ -375,9 +411,11 @@
         }
         state.cameraX = player.x - canvas.width / 4;
         
+        // Обновление белого UI: Выводим ХП, Плиты, Рекорды и кнопки управления магазином
         document.getElementById('scoreBoard').innerHTML = 
             `HP: ${state.hp} | Монеты: ${state.coins} | Рекорд: ${state.highScore}<br>Дистанция: ${state.distance}<br>` +
-            `<span style="color:#fff">Жми 'V' - купить HP (10 монет)</span>`;
+            `<span style="color:#fff">Жми 'V' - Купить HP (10 монет) | Жми 'E' - Купить плиту (15 монет, в запасе: ${state.savedPlatformsCount})</span><br>` +
+            `<span style="color:#aaa">Жми 'S' или Стрелку Вниз, чтобы ПОСТАВИТЬ плиту под ноги в полете</span>`;
 
         generateWorld();
         draw();
@@ -412,7 +450,7 @@
             ctx.restore();
         });
 
-        // Отрисовка цветных искр приземления
+        // Цветные искры приземления
         landParticles.forEach(lp => {
             ctx.save();
             ctx.globalAlpha = lp.alpha; ctx.fillStyle = lp.color;
@@ -420,41 +458,61 @@
             ctx.restore();
         });
 
-        // Платформы
+        // Отрисовка платформ
         platforms.forEach(p => {
             ctx.save();
             ctx.translate(p.x + p.w / 2, p.y + p.h);
             ctx.scale(1, p.scaleY);
             ctx.translate(-(p.x + p.w / 2), -(p.y + p.h));
 
-            ctx.shadowBlur = 18;
-            if (p.type === 'trap') { 
-                if (p.isTouched && p.timer % 10 < 5) {
-                    ctx.fillStyle = '#ff4d4d'; ctx.shadowColor = '#ff1a1a';
-                } else {
-                    ctx.fillStyle = p.isTouched ? '#cc2929' : '#661414'; ctx.shadowColor = '#ff3333'; 
+            // Логика Изменения 1: Эффект учащающегося мигания для переносной белой плиты
+            let shouldDrawCustomWhite = true;
+            if (p.type === 'custom_white') {
+                // Плита живет 900 кадров (15 сек). Осталось p.timer кадров.
+                if (p.timer <= 180) {
+                    // Последние 3 секунды: мигает очень быстро (каждые 4 кадра)
+                    if (Math.floor(p.timer / 4) % 2 === 0) shouldDrawCustomWhite = false;
+                } else if (p.timer <= 300) {
+                    // С 10 по 12 секунду (осталось 5-3 сек): мигает медленнее (каждые 12 кадров)
+                    if (Math.floor(p.timer / 12) % 2 === 0) shouldDrawCustomWhite = false;
                 }
             }
-            else if (p.type === 'jump') { 
-                ctx.fillStyle = '#103d10'; ctx.shadowColor = '#00ff00'; 
+
+            if (shouldDrawCustomWhite) {
+                ctx.shadowBlur = 18;
+                if (p.type === 'trap') { 
+                    if (p.isTouched && p.timer % 10 < 5) {
+                        ctx.fillStyle = '#ff4d4d'; ctx.shadowColor = '#ff1a1a';
+                    } else {
+                        ctx.fillStyle = p.isTouched ? '#cc2929' : '#661414'; ctx.shadowColor = '#ff3333'; 
+                    }
+                }
+                else if (p.type === 'jump') { 
+                    ctx.fillStyle = '#103d10'; ctx.shadowColor = '#00ff00'; 
+                }
+                else if (p.type === 'gold') {
+                    ctx.fillStyle = '#4a3c00'; ctx.shadowColor = '#ffd700';
+                }
+                // Наша новая переносная плита: Яркий белый неон!
+                else if (p.type === 'custom_white') {
+                    ctx.fillStyle = '#444444'; ctx.shadowColor = '#ffffff';
+                }
+                else { 
+                    ctx.fillStyle = '#1a1a24'; ctx.shadowColor = '#8a2be2'; 
+                }
+                
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                ctx.shadowBlur = 0;
+                
+                if (p.type === 'jump') ctx.strokeStyle = '#00ff00';
+                else if (p.type === 'trap') ctx.strokeStyle = '#ff3333';
+                else if (p.type === 'gold') ctx.strokeStyle = '#ffd700';
+                else if (p.type === 'custom_white') ctx.strokeStyle = '#ffffff';
+                else ctx.strokeStyle = '#da70d6';
+                
+                ctx.lineWidth = 2;
+                ctx.strokeRect(p.x, p.y, p.w, p.h);
             }
-            else if (p.type === 'gold') {
-                ctx.fillStyle = '#4a3c00'; ctx.shadowColor = '#ffd700';
-            }
-            else { 
-                ctx.fillStyle = '#1a1a24'; ctx.shadowColor = '#8a2be2'; 
-            }
-            
-            ctx.fillRect(p.x, p.y, p.w, p.h);
-            ctx.shadowBlur = 0;
-            
-            if (p.type === 'jump') ctx.strokeStyle = '#00ff00';
-            else if (p.type === 'trap') ctx.strokeStyle = '#ff3333';
-            else if (p.type === 'gold') ctx.strokeStyle = '#ffd700';
-            else ctx.strokeStyle = '#da70d6';
-            
-            ctx.lineWidth = 2;
-            ctx.strokeRect(p.x, p.y, p.w, p.h);
             ctx.restore();
         });
 
@@ -491,24 +549,19 @@
             } 
         });
 
-        // ИСПРАВЛЕНИЕ 1: Игрок крутится ЧЕСТНО ВОКРУГ СВОЕГО ЦЕНТРА
+        // Игрок (Отрисовка сальто и сжатия)
         if (state.invulnerable % 10 < 5) {
             ctx.save();
-            
-            // 1. Сначала смещаемся к ногам персонажа, чтобы применить физику СЖАТИЯ при падении
             ctx.translate(player.x + player.width / 2, player.y + player.height);
             ctx.scale(player.scaleX, player.scaleY);
-            
-            // 2. Теперь возвращаем систему координат обратно в центр Амогуса, чтобы КРУТИТЬ сальто строго на месте
             ctx.translate(0, -player.height / 2);
             
             if (player.isFlipping) {
                 ctx.rotate(player.flipAngle);
             } else {
-                ctx.rotate(player.angle); // Небольшой наклон при беге
+                ctx.rotate(player.angle);
             }
             
-            // 3. Отрисовываем картинку относительно нового, идеально отцентрованного центра
             if (playerImg.complete && playerImg.width > 0) {
                 ctx.drawImage(playerImg, -player.width / 2, -player.height / 2, player.width, player.height);
             } else { 
@@ -527,6 +580,7 @@
         state.hp = CONFIG.hpMax; state.distance = 0; state.coins = 0; state.invulnerable = 0;
         player.x = 50; player.y = 100; player.dx = 0; player.dy = 0; player.angle = 0; player.flipAngle = 0; 
         player.isFlipping = false; player.scaleX = 1; player.scaleY = 1; player.wasInAirFromTrampoline = false;
+        state.savedPlatformsCount = 0; // Обнуляем запас карманных платформ при перезапуске
         platforms = []; coins = []; meteors = []; particles = []; landParticles = [];
         generateWorld(); 
     }
