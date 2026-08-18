@@ -176,13 +176,13 @@
         }
         if (platforms.length > 30) platforms.shift();
     }
-    // === ПОДБЛОК: ЛОГИКА (ОБНОВЛЕНИЕ КАДРА) ===
+            // === ПОДБЛОК: ЛОГИКА (ОБНОВЛЕНИЕ КАДРА) ===
     function update() {
         if (!state.gameActive) { draw(); requestAnimationFrame(update); return; }
 
         let moving = false;
 
-        // Плавное возвращение размеров Амогуса к стандартным 1:1
+        // Плавное возвращение размеров Амогуса к стандарту
         player.scaleX += (1 - player.scaleX) * 0.1;
         player.scaleY += (1 - player.scaleY) * 0.1;
 
@@ -209,16 +209,17 @@
             }
         }
 
-        // Прыжок и Изменение 2: Анимация вытягивания вверх при прыжке
+        // Прыжок и вытягивание вверх
         if ((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) { 
             player.dy = CONFIG.jumpPower; 
             player.grounded = false; 
             playSnd('sndJump');
             
-            player.scaleY = 1.25; // Вытягивается вверх
-            player.scaleX = 0.85; // Сжимается по бокам
+            player.scaleY = 1.25; 
+            player.scaleX = 0.85; 
         }
 
+        // Вращение сальто
         if (player.isFlipping) {
             player.flipAngle += 0.2; 
             if (player.flipAngle >= Math.PI * 2) {
@@ -250,41 +251,30 @@
         platforms.forEach((p, i) => {
             if (player.x < p.x + p.w && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.h + 20 && player.dy >= 0) {
                 
-                // Проверяем, упали ли мы с большой высоты (скорость падения dy > 6)
-                if (!oldGrounded && player.dy > 6) {
-                    // Изменение 2: Анимация приземления (сплющивание)
-                    player.scaleY = 0.75; // Прижимается к полу
-                    player.scaleX = 1.2;  // Расширяется в стороны
+                // ИСПРАВЛЕНИЕ 2: Искры и звук ЛАНД появляются СТРОГО при падении после зеленого батута на другую плиту
+                if (!oldGrounded && player.wasInAirFromTrampoline && p.type !== 'jump') {
                     
-                    // Изменение 1: Определяем цвет искр в зависимости от типа плиты
-                    let pColor = '#da70d6'; // Обычная плита (Орхидея/Фиолетовый)
-                    if (p.type === 'jump') pColor = '#00ff00'; // Зеленая
-                    if (p.type === 'trap') pColor = '#ff3333'; // Красная
-                    if (p.type === 'gold') pColor = '#ffd700'; // Желтая
+                    player.scaleY = 0.75; 
+                    player.scaleX = 1.2;  
                     
-                    // Создаем 15 цветных искр разлетающихся в стороны
+                    let pColor = '#da70d6'; 
+                    if (p.type === 'trap') pColor = '#ff3333'; 
+                    if (p.type === 'gold') pColor = '#ffd700'; 
+                    
                     for (let k = 0; k < 15; k++) {
                         landParticles.push({
                             x: player.x + player.width / 2,
                             y: p.y,
                             vx: Math.random() * 6 - 3,
-                            vy: Math.random() * -4 - 1, // Летят немного вверх
+                            vy: Math.random() * -4 - 1, 
                             size: Math.random() * 4 + 2,
                             color: pColor,
                             alpha: 1
                         });
                     }
 
-                    // Изменение 1: Условия для глухого звука удара (sndLand)
-                    // Воспроизводится всегда при жестком падении, кроме случая когда мы прыгнули на батуте и приземлились обратно на этот же батут
-                    if (player.wasInAirFromTrampoline) {
-                        if (p.type !== 'jump') {
-                            playSnd('sndLand');
-                            player.wasInAirFromTrampoline = false;
-                        }
-                    } else {
-                        playSnd('sndLand');
-                    }
+                    playSnd('sndLand'); // Глухой удар играет только здесь
+                    player.wasInAirFromTrampoline = false; // Сброс флага
                 }
 
                 player.y = p.y - player.height;
@@ -296,14 +286,14 @@
                     
                     player.isFlipping = true;
                     player.flipAngle = 0;
-                    player.wasInAirFromTrampoline = true; // Запомнили, что вылетели с батута
+                    player.wasInAirFromTrampoline = true; // Активируем полет с батута
                     playSnd('sndTrampoline');
                 } else {
                     player.dy = 0;
                     player.isFlipping = false;
                     player.flipAngle = 0;
-                    // Если встали на любую не-батутную плиту, сбрасываем флаг батутного полета
-                    if (p.type !== 'jump') player.wasInAirFromTrampoline = false;
+                    // Если приземлились на обычную плиту (и не было батутного полета), просто обнуляем флаг
+                    if (!player.wasInAirFromTrampoline) player.wasInAirFromTrampoline = false;
                 }
                 
                 player.grounded = true;
@@ -345,11 +335,11 @@
             if (p.alpha <= 0) particles.splice(i, 1);
         });
 
-        // Обновление и исчезновение искр приземления
+        // Физика падения искр
         landParticles.forEach((lp, i) => {
             lp.x += lp.vx;
             lp.y += lp.vy;
-            lp.vy += 0.15; // Гравитация для искр, чтобы они красиво падали вниз
+            lp.vy += 0.15; 
             lp.alpha -= 0.03;
             if (lp.alpha <= 0) landParticles.splice(i, 1);
         });
@@ -422,14 +412,11 @@
             ctx.restore();
         });
 
-        // Изменение 1: Отрисовка цветных искр приземления с учетом их прозрачности
+        // Отрисовка цветных искр приземления
         landParticles.forEach(lp => {
             ctx.save();
-            ctx.globalAlpha = lp.alpha;
-            ctx.fillStyle = lp.color;
-            ctx.beginPath();
-            ctx.arc(lp.x, lp.y, lp.size, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.globalAlpha = lp.alpha; ctx.fillStyle = lp.color;
+            ctx.beginPath(); ctx.arc(lp.x, lp.y, lp.size, 0, Math.PI * 2); ctx.fill();
             ctx.restore();
         });
 
@@ -504,27 +491,28 @@
             } 
         });
 
-        // Игрок с Изменением 2: Рендеринг деформации сжатия и вытягивания (player.scaleX / Y)
+        // ИСПРАВЛЕНИЕ 1: Игрок крутится ЧЕСТНО ВОКРУГ СВОЕГО ЦЕНТРА
         if (state.invulnerable % 10 < 5) {
             ctx.save();
-            // Сначала смещаемся к ногам персонажа, чтобы сжатие происходило относительно земли, а не центра
-            ctx.translate(player.x + player.width / 2, player.y + player.height);
             
-            // Применяем масштабирование (сплющивание/вытягивание)
+            // 1. Сначала смещаемся к ногам персонажа, чтобы применить физику СЖАТИЯ при падении
+            ctx.translate(player.x + player.width / 2, player.y + player.height);
             ctx.scale(player.scaleX, player.scaleY);
             
-            // Применяем вращение сальто или наклон бега
+            // 2. Теперь возвращаем систему координат обратно в центр Амогуса, чтобы КРУТИТЬ сальто строго на месте
+            ctx.translate(0, -player.height / 2);
+            
             if (player.isFlipping) {
                 ctx.rotate(player.flipAngle);
             } else {
-                ctx.rotate(player.angle);
+                ctx.rotate(player.angle); // Небольшой наклон при беге
             }
             
-            // Рисуем спрайт, смещая его обратно, чтобы точка опоры осталась внизу
+            // 3. Отрисовываем картинку относительно нового, идеально отцентрованного центра
             if (playerImg.complete && playerImg.width > 0) {
-                ctx.drawImage(playerImg, -player.width / 2, -player.height, player.width, player.height);
+                ctx.drawImage(playerImg, -player.width / 2, -player.height / 2, player.width, player.height);
             } else { 
-                ctx.fillStyle = "red"; ctx.fillRect(-player.width / 2, -player.height, player.width, player.height); 
+                ctx.fillStyle = "red"; ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height); 
             }
             ctx.restore();
         }
